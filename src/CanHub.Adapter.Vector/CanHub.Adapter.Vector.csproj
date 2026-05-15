@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CanHub.Adapter.Vector</RootNamespace>
+    <AssemblyName>CanHub.Adapter.Vector</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <!-- NU5100: 原生 DLL 放在 runtimes/ 而非 lib/，已正确配置 -->
+    <NoWarn>$(NoWarn);NU5100</NoWarn>
+
+    <!-- Version -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
+    <MinVerDefaultPreReleaseIdentifiers>preview.0</MinVerDefaultPreReleaseIdentifiers>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <PackageId>CanHub.Adapter.Vector</PackageId>
+    <Title>CanHub Vector XL Driver Adapter</Title>
+    <Description>Vector CAN adapter for CanHub — provides CAN/CAN FD access via Vector XL Driver API.</Description>
+    <Authors>Eric YaRu YANG</Authors>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <Copyright>Copyright (c) CanHub Contributors</Copyright>
+    <PackageTags>can;canfd;vector;automotive;diagnostics</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- Release -->
+    <PackageReleaseNotes>CAN/CAN FD access via Vector XL Driver API.</PackageReleaseNotes>
+
+    <!-- URL -->
+    <PackageProjectUrl>https://github.com/ThisIsJustNobody/CanHub</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ThisIsJustNobody/CanHub.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Source Link + Symbols -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanHub.Adapter.Vector.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CanHub.Abstractions\CanHub.Abstractions.csproj" />
+    <ProjectReference Include="..\CanHub.Core\CanHub.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="vxlapi_NET">
+      <HintPath>libs\Vector\vxlapi_NET.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <!-- 托管 wrapper：打包进 lib/net10.0，消费端自动引用 -->
+  <ItemGroup>
+    <None Include="libs\Vector\vxlapi_NET.dll"
+          Pack="true" PackagePath="lib\net10.0\vxlapi_NET.dll" />
+  </ItemGroup>
+  <!-- 原生 DLL：本地构建复制 + 打包到 runtimes/ -->
+  <ItemGroup>
+    <Content Include="libs\Vector\vxlapi64.dll" Link="vxlapi64.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="true" PackagePath="runtimes\win-x64\native\vxlapi64.dll" />
+    <Content Include="libs\Vector\vxlapi.dll" Link="vxlapi.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="true" PackagePath="runtimes\win-x86\native\vxlapi.dll" />
+  </ItemGroup>
+  <!-- MSBuild targets：消费端自动复制原生 DLL 到输出目录 -->
+  <ItemGroup>
+    <None Include="build\CanHub.Adapter.Vector.targets"
+          Pack="true" PackagePath="buildTransitive\CanHub.Adapter.Vector.targets" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="README.zh-CN.md" Pack="true" PackagePath="\" />
+    <None Include="THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_HOME: ${{ github.workspace }}/.dotnet-cli-home
+  SOURCE_PROJECTS: |
+    src/CanHub.Abstractions/CanHub.Abstractions.csproj
+    src/CanHub.Core/CanHub.Core.csproj
+    src/CanHub.Adapter.Virtual/CanHub.Adapter.Virtual.csproj
+    src/CanHub.Adapter.Vector/CanHub.Adapter.Vector.csproj
+    src/CanHub.Adapter.Zlg/CanHub.Adapter.Zlg.csproj
+  TEST_PROJECTS: |
+    tests/CanHub.Abstractions.Tests/CanHub.Abstractions.Tests.csproj
+    tests/CanHub.Core.Tests/CanHub.Core.Tests.csproj
+    tests/CanHub.Adapter.Virtual.Tests/CanHub.Adapter.Virtual.Tests.csproj
+    tests/CanHub.Adapter.Vector.Tests/CanHub.Adapter.Vector.Tests.csproj
+    tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj
+    tests/CanHub.PackageSmoke.Tests/CanHub.PackageSmoke.Tests.csproj
+
+jobs:
+  restore-build-test-pack:
+    name: Restore, build, test, pack (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        shell: pwsh
+        run: |
+          $projectList = @($env:SOURCE_PROJECTS, $env:TEST_PROJECTS) -join "`n"
+          $projects = $projectList -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet restore $project
+          }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $projectList = @($env:SOURCE_PROJECTS, $env:TEST_PROJECTS) -join "`n"
+          $projects = $projectList -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet build $project -c Release --no-restore
+          }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $projects = $env:TEST_PROJECTS -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet test $project -c Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+          }
+
+      - name: Pack
+        if: matrix.os == 'ubuntu-latest'
+        shell: pwsh
+        run: |
+          $projects = $env:SOURCE_PROJECTS -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet pack $project -c Release --no-build -o artifacts/packages
+          }
+
+      - name: Upload package artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.os }}
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error

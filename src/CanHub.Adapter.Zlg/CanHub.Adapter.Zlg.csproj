@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CanHub.Adapter.Zlg</RootNamespace>
+    <AssemblyName>CanHub.Adapter.Zlg</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <NoWarn>$(NoWarn);NU5100</NoWarn>
+
+    <!-- Version -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
+    <MinVerDefaultPreReleaseIdentifiers>preview.0</MinVerDefaultPreReleaseIdentifiers>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <PackageId>CanHub.Adapter.Zlg</PackageId>
+    <Title>CanHub ZLG CAN Adapter</Title>
+    <Description>ZLG CAN adapter for CanHub — provides CAN/CAN FD access via zlgcan.dll.</Description>
+    <Authors>Eric YaRu YANG</Authors>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <Copyright>Copyright (c) CanHub Contributors</Copyright>
+    <PackageTags>can;canfd;zlg;usbcanfd;automotive;diagnostics</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- Release -->
+    <PackageReleaseNotes>CAN/CAN FD access via zlgcan.dll.</PackageReleaseNotes>
+
+    <!-- URL -->
+    <PackageProjectUrl>https://github.com/ThisIsJustNobody/CanHub</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ThisIsJustNobody/CanHub.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Source Link + Symbols -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanHub.Adapter.Zlg.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CanHub.Abstractions\CanHub.Abstractions.csproj" />
+    <ProjectReference Include="..\CanHub.Core\CanHub.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="libs\Zlg\zlgcan_x64\**\*"
+             Exclude="libs\Zlg\zlgcan_x64\**\*.h;libs\Zlg\zlgcan_x64\**\*.lib"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="true"
+             PackagePath="runtimes\win-x64\native\%(RecursiveDir)%(FileName)%(Extension)" />
+    <Content Include="libs\Zlg\zlgcan_x86\**\*"
+             Exclude="libs\Zlg\zlgcan_x86\**\*.h;libs\Zlg\zlgcan_x86\**\*.lib"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="true"
+             PackagePath="runtimes\win-x86\native\%(RecursiveDir)%(FileName)%(Extension)" />
+    <None Include="libs\Zlg\zlgcan License.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          Pack="true"
+          PackagePath="licenses\Zlg\zlgcan License.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="build\CanHub.Adapter.Zlg.targets"
+          Pack="true"
+          PackagePath="buildTransitive\CanHub.Adapter.Zlg.targets" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="README.zh-CN.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

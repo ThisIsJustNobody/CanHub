@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CanHub.Abstractions/CanHub.Abstractions.csproj" />
+    <Project Path="src/CanHub.Core/CanHub.Core.csproj" />
+    <Project Path="src/CanHub.Adapter.Zlg/CanHub.Adapter.Zlg.csproj" />
+    <Project Path="src/CanHub.Adapter.Vector/CanHub.Adapter.Vector.csproj" />
+    <Project Path="src/CanHub.Adapter.Virtual/CanHub.Adapter.Virtual.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests/vector-hardware.runsettings" />
+    <File Path="tests/zlg-hardware.runsettings" />
+    <Project Path="tests/CanHub.Abstractions.Tests/CanHub.Abstractions.Tests.csproj" />
+    <Project Path="tests/CanHub.Core.Tests/CanHub.Core.Tests.csproj" />
+    <Project Path="tests/CanHub.Adapter.Vector.Tests/CanHub.Adapter.Vector.Tests.csproj" />
+    <Project Path="tests/CanHub.Adapter.Virtual.Tests/CanHub.Adapter.Virtual.Tests.csproj" />
+    <Project Path="tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj" />
+    <Project Path="tests/CanHub.PackageSmoke.Tests/CanHub.PackageSmoke.Tests.csproj" />
+  </Folder>
+</Solution>

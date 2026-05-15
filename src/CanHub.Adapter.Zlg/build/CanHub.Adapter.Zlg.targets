@@ -1,0 +1,33 @@
+<Project>
+  <PropertyGroup>
+    <_CanHubZlgRuntimeIdentifier>$([System.String]::Copy('$(RuntimeIdentifier)').ToLowerInvariant())</_CanHubZlgRuntimeIdentifier>
+    <_CanHubZlgRuntimeIdentifierIsWindows>$([System.String]::Copy('$(RuntimeIdentifier)').ToLowerInvariant().StartsWith('win'))</_CanHubZlgRuntimeIdentifierIsWindows>
+    <_CanHubZlgRuntimeIdentifierIsX86>$([System.String]::Copy('$(RuntimeIdentifier)').ToLowerInvariant().EndsWith('-x86'))</_CanHubZlgRuntimeIdentifierIsX86>
+    <_CanHubZlgRuntimeIdentifierIsX64>$([System.String]::Copy('$(RuntimeIdentifier)').ToLowerInvariant().EndsWith('-x64'))</_CanHubZlgRuntimeIdentifierIsX64>
+    <_CanHubZlgPlatformTarget>$([System.String]::Copy('$(PlatformTarget)').ToLowerInvariant())</_CanHubZlgPlatformTarget>
+    <_CanHubZlgHostArchitecture>$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)</_CanHubZlgHostArchitecture>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_CanHubZlgHostArchitecture>$([System.String]::Copy('$(_CanHubZlgHostArchitecture)').ToLowerInvariant())</_CanHubZlgHostArchitecture>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_CanHubZlgNativeRid Condition="'$(_CanHubZlgRuntimeIdentifier)' != '' and '$(_CanHubZlgRuntimeIdentifierIsWindows)' == 'True' and '$(_CanHubZlgRuntimeIdentifierIsX86)' == 'True'">win-x86</_CanHubZlgNativeRid>
+    <_CanHubZlgNativeRid Condition="'$(_CanHubZlgRuntimeIdentifier)' != '' and '$(_CanHubZlgRuntimeIdentifierIsWindows)' == 'True' and '$(_CanHubZlgRuntimeIdentifierIsX64)' == 'True'">win-x64</_CanHubZlgNativeRid>
+    <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(_CanHubZlgPlatformTarget)' == 'x86'">win-x86</_CanHubZlgNativeRid>
+    <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(_CanHubZlgPlatformTarget)' == 'x64'">win-x64</_CanHubZlgNativeRid>
+    <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT' and '$(_CanHubZlgHostArchitecture)' == 'x86'">win-x86</_CanHubZlgNativeRid>
+    <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT' and '$(_CanHubZlgHostArchitecture)' == 'x64'">win-x64</_CanHubZlgNativeRid>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_CanHubZlgNativeRid)' != ''">
+    <CanHubZlgNative Include="$(MSBuildThisFileDirectory)..\runtimes\$(_CanHubZlgNativeRid)\native\**\*" />
+  </ItemGroup>
+
+  <Target Name="CopyCanHubZlgNative" AfterTargets="Build" Condition="'@(CanHubZlgNative)' != ''">
+    <Copy SourceFiles="@(CanHubZlgNative)"
+          DestinationFiles="@(CanHubZlgNative->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

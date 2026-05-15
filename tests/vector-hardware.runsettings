@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <CANHUB_TEST_VECTOR>1</CANHUB_TEST_VECTOR>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

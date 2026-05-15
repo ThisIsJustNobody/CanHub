@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_HOME: ${{ github.workspace }}/.dotnet-cli-home
+  ARTIFACTS_DIR: artifacts/packages
+  SOURCE_PROJECTS: |
+    src/CanHub.Abstractions/CanHub.Abstractions.csproj
+    src/CanHub.Core/CanHub.Core.csproj
+    src/CanHub.Adapter.Virtual/CanHub.Adapter.Virtual.csproj
+    src/CanHub.Adapter.Vector/CanHub.Adapter.Vector.csproj
+    src/CanHub.Adapter.Zlg/CanHub.Adapter.Zlg.csproj
+  TEST_PROJECTS: |
+    tests/CanHub.Abstractions.Tests/CanHub.Abstractions.Tests.csproj
+    tests/CanHub.Core.Tests/CanHub.Core.Tests.csproj
+    tests/CanHub.Adapter.Virtual.Tests/CanHub.Adapter.Virtual.Tests.csproj
+    tests/CanHub.Adapter.Vector.Tests/CanHub.Adapter.Vector.Tests.csproj
+    tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj
+    tests/CanHub.PackageSmoke.Tests/CanHub.PackageSmoke.Tests.csproj
+
+jobs:
+  build-test-pack-publish:
+    name: Build, test, pack, publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::Release tags must look like v1.0.0 or v1.0.0-preview.1."
+            exit 1
+          fi
+
+      - name: Detect prerelease
+        id: release
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        shell: pwsh
+        run: |
+          $projectList = @($env:SOURCE_PROJECTS, $env:TEST_PROJECTS) -join "`n"
+          $projects = $projectList -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet restore $project
+          }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $projectList = @($env:SOURCE_PROJECTS, $env:TEST_PROJECTS) -join "`n"
+          $projects = $projectList -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet build $project -c Release --no-restore
+          }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $projects = $env:TEST_PROJECTS -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet test $project -c Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+          }
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $projects = $env:SOURCE_PROJECTS -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($project in $projects) {
+            dotnet pack $project -c Release --no-build -o "$env:ARTIFACTS_DIR"
+          }
+
+      - name: Push packages to NuGet
+        run: dotnet nuget push "$ARTIFACTS_DIR"/*.nupkg --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Push symbols to NuGet
+        run: dotnet nuget push "$ARTIFACTS_DIR"/*.snupkg --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          generate_release_notes: true
+          prerelease: ${{ steps.release.outputs.prerelease }}

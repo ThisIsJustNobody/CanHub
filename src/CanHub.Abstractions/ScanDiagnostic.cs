@@ -1,0 +1,45 @@
+namespace CanHub;
+
+/// <summary>
+/// CAN 通道扫描失败的结构化诊断。<br/>
+/// Structured diagnostic for a CAN channel scan failure.
+/// </summary>
+public sealed class ScanDiagnostic
+{
+    /// <summary>适配器唯一标识符。<br/>Unique adapter identifier.</summary>
+    public string AdapterId { get; }
+
+    /// <summary>诊断分类。<br/>Diagnostic category.</summary>
+    public CanErrorCategory Category { get; }
+
+    /// <summary>人类可读的诊断消息。<br/>Human-readable diagnostic message.</summary>
+    public string Message { get; }
+
+    /// <summary>原生错误码（如有）。<br/>Native error code (if any).</summary>
+    public int? NativeErrorCode { get; }
+
+    /// <summary>错误的可恢复级别。<br/>Error recoverability level.</summary>
+    public CanRecoverability Recoverability { get; }
+
+    /// <summary>关联的端点（如有）。<br/>Associated endpoint (if any).</summary>
+    public string? Endpoint { get; }
+
+    /// <summary>创建扫描诊断记录。<br/>Creates a scan diagnostic record.</summary>
+    public ScanDiagnostic(
+        CanErrorCategory category,
+        string message,
+        int? nativeErrorCode = null,
+        CanRecoverability recoverability = CanRecoverability.Fatal,
+        string adapterId = "*",
+        string? endpoint = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        AdapterId = adapterId;
+        Category = category;
+        Message = message;
+        NativeErrorCode = nativeErrorCode;
+        Recoverability = recoverability;
+        Endpoint = string.IsNullOrWhiteSpace(endpoint) ? null : endpoint;
+    }
+}
