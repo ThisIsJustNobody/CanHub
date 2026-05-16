@@ -19,6 +19,12 @@ public sealed class CanBitTimingConstraints
     /// <summary>BRP 步进。<br/>Bitrate prescaler increment.</summary>
     public int PrescalerIncrement { get; init; } = 1;
 
+    /// <summary>每 bit 总 Tq 最小值；null 时由各 segment 最小值推导。<br/>Minimum total Tq per bit; null derives it from segment minimums.</summary>
+    public int? TimeQuantaPerBitMinimum { get; init; }
+
+    /// <summary>每 bit 总 Tq 最大值；null 时由各 segment 最大值推导。<br/>Maximum total Tq per bit; null derives it from segment maximums.</summary>
+    public int? TimeQuantaPerBitMaximum { get; init; }
+
     /// <summary>TSEG1 最小值（Tq）。<br/>Minimum TSEG1 in Tq.</summary>
     public int TimeSegment1Minimum { get; init; } = 1;
 
@@ -42,6 +48,10 @@ public sealed class CanBitTimingConstraints
         ValidatePositive(SynchronizationSegment, nameof(SynchronizationSegment));
         ValidateRange(PrescalerMinimum, PrescalerMaximum, nameof(PrescalerMinimum), nameof(PrescalerMaximum));
         ValidatePositive(PrescalerIncrement, nameof(PrescalerIncrement));
+        ValidateOptionalPositive(TimeQuantaPerBitMinimum, nameof(TimeQuantaPerBitMinimum));
+        ValidateOptionalPositive(TimeQuantaPerBitMaximum, nameof(TimeQuantaPerBitMaximum));
+        if (TimeQuantaPerBitMinimum > TimeQuantaPerBitMaximum)
+            throw new ArgumentException($"'{nameof(TimeQuantaPerBitMinimum)}' must be less than or equal to '{nameof(TimeQuantaPerBitMaximum)}'.");
         ValidateRange(TimeSegment1Minimum, TimeSegment1Maximum, nameof(TimeSegment1Minimum), nameof(TimeSegment1Maximum));
         ValidateRange(TimeSegment2Minimum, TimeSegment2Maximum, nameof(TimeSegment2Minimum), nameof(TimeSegment2Maximum));
         ValidateRange(SynchronizationJumpWidthMinimum, SynchronizationJumpWidthMaximum,
@@ -51,6 +61,12 @@ public sealed class CanBitTimingConstraints
     private static void ValidatePositive(int value, string paramName)
     {
         if (value <= 0)
+            throw new ArgumentOutOfRangeException(paramName, value, "CAN bit timing constraints must be positive.");
+    }
+
+    private static void ValidateOptionalPositive(int? value, string paramName)
+    {
+        if (value is <= 0)
             throw new ArgumentOutOfRangeException(paramName, value, "CAN bit timing constraints must be positive.");
     }
 
@@ -198,19 +214,61 @@ public static class CanBitTimingCalculator
     /// </summary>
     public static CanBitTimingCalculationResult Calculate(CanBitTimingCalculationRequest request)
     {
+        var candidates = CalculateCandidateResults(
+            request,
+            maximumResults: 1,
+            requireValidRequestedSynchronizationJumpWidth: true);
+        if (candidates.Count > 0)
+            return candidates[0];
+
         ArgumentNullException.ThrowIfNull(request);
+        throw new CanException("core", CanErrorCategory.ConfigurationConflict,
+            $"Cannot calculate CAN bit timing for bitrate {request.TargetBitrate} with clock {request.ClockFrequency} Hz.");
+    }
+
+    /// <summary>
+    /// 计算多组 CAN 位时序候选。结果按波特率误差、采样点误差、偏好 Tq 距离和 Tq 数排序。<br/>
+    /// Calculates multiple CAN bit timing candidates. Results are ordered by bitrate error, sample
+    /// point error, preferred Tq distance, and Tq count.
+    /// </summary>
+    /// <param name="request">位时序计算请求。<br/>Bit timing calculation request.</param>
+    /// <param name="maximumResults">最多返回的候选数量。<br/>Maximum number of candidates to return.</param>
+    /// <returns>按匹配程度排序的候选列表；无可用解时为空列表。<br/>Ordered candidates; empty when no timing is available.</returns>
+    public static IReadOnlyList<CanBitTimingCalculationResult> CalculateCandidates(
+        CanBitTimingCalculationRequest request,
+        int maximumResults = 16)
+    {
+        return CalculateCandidateResults(
+            request,
+            maximumResults,
+            requireValidRequestedSynchronizationJumpWidth: false);
+    }
+
+    private static IReadOnlyList<CanBitTimingCalculationResult> CalculateCandidateResults(
+        CanBitTimingCalculationRequest request,
+        int maximumResults,
+        bool requireValidRequestedSynchronizationJumpWidth)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumResults);
         ValidateRequest(request);
 
         var constraints = request.Constraints;
         var targetSamplePoint = request.SamplePoint ?? GetRecommendedNrzSamplePoint(request.TargetBitrate);
-        var minimumTimeQuanta = constraints.SynchronizationSegment +
-                                constraints.TimeSegment1Minimum +
-                                constraints.TimeSegment2Minimum;
-        var maximumTimeQuanta = constraints.SynchronizationSegment +
-                                constraints.TimeSegment1Maximum +
-                                constraints.TimeSegment2Maximum;
+        var minimumTimeQuantaBySegments = constraints.SynchronizationSegment +
+                                          constraints.TimeSegment1Minimum +
+                                          constraints.TimeSegment2Minimum;
+        var maximumTimeQuantaBySegments = constraints.SynchronizationSegment +
+                                          constraints.TimeSegment1Maximum +
+                                          constraints.TimeSegment2Maximum;
+        var minimumTimeQuanta = Math.Max(
+            minimumTimeQuantaBySegments,
+            constraints.TimeQuantaPerBitMinimum ?? minimumTimeQuantaBySegments);
+        var maximumTimeQuanta = Math.Min(
+            maximumTimeQuantaBySegments,
+            constraints.TimeQuantaPerBitMaximum ?? maximumTimeQuantaBySegments);
 
-        Candidate? best = null;
+        var candidates = new List<Candidate>();
         for (var prescaler = constraints.PrescalerMinimum;
              prescaler <= constraints.PrescalerMaximum;
              prescaler += constraints.PrescalerIncrement)
@@ -243,24 +301,47 @@ public static class CanBitTimingCalculator
                         samplePointError,
                         TimeQuantumNanoseconds: 1_000_000_000d * request.ClockDivisor * prescaler / request.ClockFrequency);
 
-                    if (best is null || IsBetter(candidate, best.Value, request.PreferredTimeQuantaPerBit))
-                        best = candidate;
+                    candidates.Add(candidate);
                 }
             }
         }
 
-        if (best is not { } timing)
+        if (candidates.Count == 0)
+            return Array.Empty<CanBitTimingCalculationResult>();
+
+        candidates.Sort((left, right) => CompareCandidates(left, right, request.PreferredTimeQuantaPerBit));
+        var results = new List<CanBitTimingCalculationResult>(Math.Min(candidates.Count, maximumResults));
+        foreach (var timing in candidates)
         {
-            throw new CanException("core", CanErrorCategory.ConfigurationConflict,
-                $"Cannot calculate CAN bit timing for bitrate {request.TargetBitrate} with clock {request.ClockFrequency} Hz.");
+            if (!TryResolveSynchronizationJumpWidth(
+                    request.SynchronizationJumpWidth,
+                    timing,
+                    constraints,
+                    requireValidRequestedSynchronizationJumpWidth,
+                    out var synchronizationJumpWidth))
+            {
+                continue;
+            }
+
+            results.Add(CreateResult(request, targetSamplePoint, timing, synchronizationJumpWidth));
+            if (results.Count == maximumResults)
+                break;
         }
 
-        var sjw = ResolveSynchronizationJumpWidth(request.SynchronizationJumpWidth, timing, constraints);
+        return results;
+    }
+
+    private static CanBitTimingCalculationResult CreateResult(
+        CanBitTimingCalculationRequest request,
+        double targetSamplePoint,
+        Candidate timing,
+        int synchronizationJumpWidth)
+    {
         return new CanBitTimingCalculationResult(
             timing.Prescaler,
             timing.TimeSegment1,
             timing.TimeSegment2,
-            sjw,
+            synchronizationJumpWidth,
             request.TargetBitrate,
             timing.ActualBitrate,
             timing.TimeQuantaPerBit,
@@ -334,32 +415,37 @@ public static class CanBitTimingCalculator
 
     private static bool IsBetter(Candidate candidate, Candidate best, int? preferredTimeQuantaPerBit)
     {
-        if (IsLower(candidate.BitrateError, best.BitrateError))
-            return true;
-        if (IsLower(best.BitrateError, candidate.BitrateError))
-            return false;
+        return CompareCandidates(candidate, best, preferredTimeQuantaPerBit) < 0;
+    }
 
-        if (IsLower(candidate.SamplePointError, best.SamplePointError))
-            return true;
-        if (IsLower(best.SamplePointError, candidate.SamplePointError))
-            return false;
+    private static int CompareCandidates(Candidate left, Candidate right, int? preferredTimeQuantaPerBit)
+    {
+        if (IsLower(left.BitrateError, right.BitrateError))
+            return -1;
+        if (IsLower(right.BitrateError, left.BitrateError))
+            return 1;
+
+        if (IsLower(left.SamplePointError, right.SamplePointError))
+            return -1;
+        if (IsLower(right.SamplePointError, left.SamplePointError))
+            return 1;
 
         if (preferredTimeQuantaPerBit is { } preferred)
         {
-            var candidatePreferredDistance = Math.Abs(candidate.TimeQuantaPerBit - preferred);
-            var bestPreferredDistance = Math.Abs(best.TimeQuantaPerBit - preferred);
-            if (candidatePreferredDistance < bestPreferredDistance)
-                return true;
-            if (candidatePreferredDistance > bestPreferredDistance)
-                return false;
+            var leftPreferredDistance = Math.Abs(left.TimeQuantaPerBit - preferred);
+            var rightPreferredDistance = Math.Abs(right.TimeQuantaPerBit - preferred);
+            if (leftPreferredDistance < rightPreferredDistance)
+                return -1;
+            if (leftPreferredDistance > rightPreferredDistance)
+                return 1;
         }
 
-        if (candidate.TimeQuantaPerBit > best.TimeQuantaPerBit)
-            return true;
-        if (candidate.TimeQuantaPerBit < best.TimeQuantaPerBit)
-            return false;
+        if (left.TimeQuantaPerBit > right.TimeQuantaPerBit)
+            return -1;
+        if (left.TimeQuantaPerBit < right.TimeQuantaPerBit)
+            return 1;
 
-        return candidate.Prescaler < best.Prescaler;
+        return left.Prescaler.CompareTo(right.Prescaler);
     }
 
     private static bool IsLower(double left, double right) => left < right - ComparisonTolerance;
@@ -390,6 +476,32 @@ public static class CanBitTimingCalculator
             defaultSjw = timing.TimeSegment2;
 
         return defaultSjw;
+    }
+
+    private static bool TryResolveSynchronizationJumpWidth(
+        int? requestedSynchronizationJumpWidth,
+        Candidate timing,
+        CanBitTimingConstraints constraints,
+        bool requireValidRequestedSynchronizationJumpWidth,
+        out int synchronizationJumpWidth)
+    {
+        if (requestedSynchronizationJumpWidth is { } explicitSjw)
+        {
+            if (IsValidSynchronizationJumpWidth(explicitSjw, timing, constraints))
+            {
+                synchronizationJumpWidth = explicitSjw;
+                return true;
+            }
+
+            if (requireValidRequestedSynchronizationJumpWidth)
+            {
+                synchronizationJumpWidth = 0;
+                return false;
+            }
+        }
+
+        synchronizationJumpWidth = ResolveSynchronizationJumpWidth(null, timing, constraints);
+        return true;
     }
 
     private static bool IsValidSynchronizationJumpWidth(
