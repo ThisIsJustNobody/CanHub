@@ -15,13 +15,15 @@ internal sealed class VirtualBusSession : ICanBus
     private readonly VirtualChannelState _channelState;
     private readonly bool _fdEnabled;
     private readonly ConcurrentDictionary<Guid, ICanSubscription> _subscriptions = new();
+    private readonly List<Action<CanStatusEvent>> _statusHandlers = [];
+    private readonly object _statusGate = new();
     private int _disposed;
 
     /// <inheritdoc/>
     public string DisplayName { get; }
 
     /// <inheritdoc/>
-    public bool IsOpen => Volatile.Read(ref _disposed) == 0;
+    public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _channelState.IsOpen;
 
     /// <summary>
     /// 当前会话对应的虚拟通道索引。<br/>
@@ -35,8 +37,20 @@ internal sealed class VirtualBusSession : ICanBus
     /// </summary>
     public event Action<CanStatusEvent>? StatusChanged
     {
-        add { }
-        remove { }
+        add
+        {
+            if (value is null) return;
+            lock (_statusGate)
+                _statusHandlers.Add(value);
+            _channelState.StatusChanged += value;
+        }
+        remove
+        {
+            if (value is null) return;
+            lock (_statusGate)
+                _statusHandlers.Remove(value);
+            _channelState.StatusChanged -= value;
+        }
     }
 
     public VirtualBusSession(VirtualBusGroup group, VirtualChannelState channelState, bool fdEnabled)
@@ -58,7 +72,7 @@ internal sealed class VirtualBusSession : ICanBus
         CanTransmitOptions? options = null,
         CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ObjectDisposedException.ThrowIf(!IsOpen, this);
         ct.ThrowIfCancellationRequested();
 
         if (!frame.IsTransmittable)
@@ -102,7 +116,7 @@ internal sealed class VirtualBusSession : ICanBus
         CanTransmitOptions? options = null,
         CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ObjectDisposedException.ThrowIf(!IsOpen, this);
         ct.ThrowIfCancellationRequested();
 
         // 拒绝未实现的选项配置
@@ -154,7 +168,7 @@ internal sealed class VirtualBusSession : ICanBus
     /// </summary>
     public ICanSubscription Subscribe(CanSubscriptionOptions options)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ObjectDisposedException.ThrowIf(!IsOpen, this);
 
         ICanSubscription subscription;
         try
@@ -209,9 +223,26 @@ internal sealed class VirtualBusSession : ICanBus
         foreach (var sub in _subscriptions.Values)
             sub.Dispose();
         _subscriptions.Clear();
+        DisposeStatusHandlers();
 
         // 释放通道引用；全局存储负责原子移除和最终 Dispose。
         VirtualBusStore.ReleaseChannel(_group, _channelState);
+    }
+
+    private void DisposeStatusHandlers()
+    {
+        Action<CanStatusEvent>[] handlers;
+        lock (_statusGate)
+        {
+            if (_statusHandlers.Count == 0)
+                return;
+
+            handlers = _statusHandlers.ToArray();
+            _statusHandlers.Clear();
+        }
+
+        foreach (var handler in handlers)
+            _channelState.StatusChanged -= handler;
     }
 
     private static bool IsDefaultOptions(CanTransmitOptions options) =>

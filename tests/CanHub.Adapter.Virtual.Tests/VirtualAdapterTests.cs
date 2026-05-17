@@ -52,6 +52,81 @@ public sealed class VirtualAdapterTests
         bus.Dispose();
     }
 
+    [TestMethod(DisplayName = "禁用恢复时注入 bus-off 只上报状态")]
+    public async Task RecoveryDisabled_InjectedBusOff_ReportsStatusOnly()
+    {
+        var provider = new VirtualAdapterProvider();
+        var faultInjector = new VirtualFaultInjector();
+        var endpoint = CanEndpoint.Parse("virtual://recovery-disabled?channel=0");
+        var context = new CanOpenContext(endpoint, new CanOpenOptions
+        {
+            NativeOptions = new VirtualRecoveryOptions { FaultInjector = faultInjector }
+        });
+        var bus = await provider.OpenAsync(context, TestContext.CancellationToken);
+        var statuses = new List<CanStatusEvent>();
+        bus.StatusChanged += statuses.Add;
+
+        faultInjector.InjectBusOff();
+
+        Assert.IsTrue(bus.IsOpen);
+        Assert.HasCount(1, statuses);
+        Assert.AreEqual(CanStatusCode.BusOff, statuses[0].Code);
+        Assert.AreEqual(CanStatusSeverity.Critical, statuses[0].Severity);
+        bus.Dispose();
+    }
+
+    [TestMethod(DisplayName = "CloseOnFault 在 bus-off 后关闭虚拟总线")]
+    public async Task CloseOnFault_InjectedBusOff_ClosesBus()
+    {
+        var provider = new VirtualAdapterProvider();
+        var faultInjector = new VirtualFaultInjector();
+        var endpoint = CanEndpoint.Parse("virtual://recovery-close?channel=0");
+        var context = new CanOpenContext(endpoint, new CanOpenOptions
+        {
+            Recovery = CanRecoveryOptions.CloseOnFault(),
+            NativeOptions = new VirtualRecoveryOptions { FaultInjector = faultInjector }
+        });
+        var bus = await provider.OpenAsync(context, TestContext.CancellationToken);
+        var statuses = new List<CanStatusEvent>();
+        bus.StatusChanged += statuses.Add;
+
+        faultInjector.InjectBusOff();
+
+        Assert.IsFalse(bus.IsOpen);
+        CollectionAssert.AreEqual(
+            new[] { CanStatusCode.BusOff, CanStatusCode.Recovering, CanStatusCode.Disconnected },
+            statuses.Select(static status => status.Code).ToArray());
+        bus.Dispose();
+    }
+
+    [TestMethod(DisplayName = "ResetOnFault 在 bus-off 后执行一次重开并保持会话可发送")]
+    public async Task ResetOnFault_InjectedBusOff_ReopensBusAndAllowsSend()
+    {
+        var provider = new VirtualAdapterProvider();
+        var faultInjector = new VirtualFaultInjector();
+        var endpoint = CanEndpoint.Parse("virtual://recovery-reset?channel=0");
+        var context = new CanOpenContext(endpoint, new CanOpenOptions
+        {
+            Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+            NativeOptions = new VirtualRecoveryOptions { FaultInjector = faultInjector }
+        });
+        var bus = await provider.OpenAsync(context, TestContext.CancellationToken);
+        var statuses = new List<CanStatusEvent>();
+        bus.StatusChanged += statuses.Add;
+
+        faultInjector.InjectBusOff();
+        var result = await bus.SendAsync(
+            CanFrame.CreateData(CanId.Standard(0x321), [0x01]),
+            ct: TestContext.CancellationToken);
+
+        Assert.IsTrue(bus.IsOpen);
+        Assert.IsTrue(result.Accepted);
+        CollectionAssert.AreEqual(
+            new[] { CanStatusCode.BusOff, CanStatusCode.Recovering, CanStatusCode.Recovered },
+            statuses.Select(static status => status.Code).ToArray());
+        bus.Dispose();
+    }
+
     [TestMethod(DisplayName = "同总线不同通道共享消息")]
     public async Task DifferentChannels_SameBus_ShareMessages()
     {
@@ -438,6 +513,51 @@ public sealed class VirtualAdapterTests
         Assert.IsTrue(result2.Accepted);
         Assert.AreNotEqual(result1.CorrelationId, result2.CorrelationId,
             "两次发送的 CorrelationId 应唯一");
+
+        bus1.Dispose();
+        bus2.Dispose();
+    }
+
+    [TestMethod(DisplayName = "同端点多会话共享一次恢复序列")]
+    public async Task SameEndpoint_OpenTwice_SharedRecoverySequence()
+    {
+        var provider = new VirtualAdapterProvider();
+        var faultInjector = new VirtualFaultInjector();
+        var endpoint = CanEndpoint.Parse("virtual://shared-recovery?channel=0");
+        var context = new CanOpenContext(endpoint, new CanOpenOptions
+        {
+            Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+            NativeOptions = new VirtualRecoveryOptions { FaultInjector = faultInjector }
+        });
+
+        var bus1 = await provider.OpenAsync(context, TestContext.CancellationToken);
+        var bus2 = await provider.OpenAsync(context, TestContext.CancellationToken);
+        var statuses1 = new List<CanStatusEvent>();
+        var statuses2 = new List<CanStatusEvent>();
+        bus1.StatusChanged += statuses1.Add;
+        bus2.StatusChanged += statuses2.Add;
+
+        faultInjector.InjectBusOff();
+        var send1 = await bus1.SendAsync(
+            CanFrame.CreateData(CanId.Standard(0x701), [0x01]),
+            ct: TestContext.CancellationToken);
+        var send2 = await bus2.SendAsync(
+            CanFrame.CreateData(CanId.Standard(0x702), [0x02]),
+            ct: TestContext.CancellationToken);
+
+        Assert.IsTrue(bus1.IsOpen);
+        Assert.IsTrue(bus2.IsOpen);
+        Assert.IsTrue(send1.Accepted);
+        Assert.IsTrue(send2.Accepted);
+        CollectionAssert.AreEqual(
+            new[] { CanStatusCode.BusOff, CanStatusCode.Recovering, CanStatusCode.Recovered },
+            statuses1.Select(static status => status.Code).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { CanStatusCode.BusOff, CanStatusCode.Recovering, CanStatusCode.Recovered },
+            statuses2.Select(static status => status.Code).ToArray());
+        CollectionAssert.AreEqual(
+            statuses1.Select(static status => status.Sequence).ToArray(),
+            statuses2.Select(static status => status.Sequence).ToArray());
 
         bus1.Dispose();
         bus2.Dispose();
