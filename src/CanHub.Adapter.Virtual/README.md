@@ -63,6 +63,23 @@ The adapter supports classic CAN and CAN FD frames. Scanning is intentionally no
 
 The virtual adapter is deterministic and hardware-free, so it is suitable for normal CI. It is also a good default for application tests that need to exercise subscription behavior, send correlation IDs, and basic multi-channel routing.
 
+For recovery tests, pass a `VirtualRecoveryOptions` instance through `CanOpenOptions.NativeOptions` and keep its `VirtualFaultInjector`. Calling `InjectBusOff()` publishes a bus-off status and exercises the selected `CanOpenOptions.Recovery` policy without hardware.
+
+```csharp
+var injector = new VirtualFaultInjector();
+
+await using var bus = await registry.OpenAsync(
+    "virtual://recovery?channel=0",
+    new CanOpenOptions
+    {
+        Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+        NativeOptions = new VirtualRecoveryOptions { FaultInjector = injector }
+    },
+    CancellationToken.None);
+
+injector.InjectBusOff();
+```
+
 ## License
 
 This package is licensed under the MIT License.

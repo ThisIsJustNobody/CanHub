@@ -63,6 +63,23 @@ await tx.SendAsync(
 
 虚拟适配器行为确定且不依赖硬件，适合普通 CI。应用测试如果需要覆盖订阅行为、发送关联 ID 或基础多通道路由，可以优先使用本适配器。
 
+恢复相关测试可以通过 `CanOpenOptions.NativeOptions` 传入 `VirtualRecoveryOptions`，并保留其中的 `VirtualFaultInjector`。调用 `InjectBusOff()` 会发布 bus-off 状态，并在无硬件环境下触发当前 `CanOpenOptions.Recovery` 策略。
+
+```csharp
+var injector = new VirtualFaultInjector();
+
+await using var bus = await registry.OpenAsync(
+    "virtual://recovery?channel=0",
+    new CanOpenOptions
+    {
+        Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+        NativeOptions = new VirtualRecoveryOptions { FaultInjector = injector }
+    },
+    CancellationToken.None);
+
+injector.InjectBusOff();
+```
+
 ## 协议
 
 本包使用 MIT License。

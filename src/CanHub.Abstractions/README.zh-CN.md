@@ -22,6 +22,7 @@ dotnet add package CanHub.Abstractions
 | 租约契约 | `IDeviceLease`, `IChannelLease`, `ExclusivityModel` |
 | 发现与扫描 | `CanChannelInfo`, `CanChannelScanResult`, `ScanOptions`, `ScanDiagnostic` |
 | 状态和错误 | `CanStatusEvent`, `CanStatusKind`, `CanStatusCode`, `CanStatusSeverity`, `CanException`, `CanErrorCategory` |
+| 恢复策略 | `CanRecoveryOptions`, `CanRecoveryMode`, `CanRecoveryTrigger` |
 
 ## 帧模型
 
@@ -48,6 +49,10 @@ var length = fd.CopyPayloadTo(buffer);
 ## 发送契约
 
 `ICanBus.SendAsync` 表示本地提交结果，并不等同于远端节点已经接收。总线级发送结果、接收帧和故障会以 `CanFrameEvent` 形式上报；当适配器能够建立映射时，事件会携带与提交结果相同的 `CorrelationId`。
+
+## 恢复策略
+
+自动总线恢复必须显式开启。`CanOpenOptions.Recovery` 默认是 `CanRecoveryOptions.Disabled`，因此适配器只会通过 `StatusChanged` 上报故障，不会自动关闭或重开通道。`ResetOnFault` 表示使用原始 open context 立即执行一次 close/reopen；`ReopenWithBackoff` 使用同一套 close/reopen 机制，但带延迟和最大尝试次数。
 
 ## 适配器清单
 
