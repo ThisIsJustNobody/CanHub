@@ -72,8 +72,16 @@ internal sealed class VirtualBusSession : ICanBus
         CanTransmitOptions? options = null,
         CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(!IsOpen, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ct.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(!_channelState.IsOpen, this);
+
+        if (!_channelState.CanSubmitTransmit)
+        {
+            var rejectId = _group.AllocateCorrelationId();
+            return ValueTask.FromResult(
+                CanTransmitSubmissionResult.Failed(rejectId, CanTransmitSubmissionStatus.NotStarted));
+        }
 
         if (!frame.IsTransmittable)
         {
@@ -116,8 +124,9 @@ internal sealed class VirtualBusSession : ICanBus
         CanTransmitOptions? options = null,
         CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(!IsOpen, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ct.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(!_channelState.IsOpen, this);
 
         // 拒绝未实现的选项配置
         if (options is not null && !IsDefaultOptions(options))
@@ -128,6 +137,18 @@ internal sealed class VirtualBusSession : ICanBus
                 var rejectId = _group.AllocateCorrelationId();
                 rejected[i] = CanTransmitSubmissionResult.Failed(
                     rejectId, CanTransmitSubmissionStatus.UnsupportedFeature);
+            }
+            return ValueTask.FromResult(rejected);
+        }
+
+        if (!_channelState.CanSubmitTransmit)
+        {
+            var rejected = new CanTransmitSubmissionResult[frames.Length];
+            for (int i = 0; i < rejected.Length; i++)
+            {
+                var rejectId = _group.AllocateCorrelationId();
+                rejected[i] = CanTransmitSubmissionResult.Failed(
+                    rejectId, CanTransmitSubmissionStatus.NotStarted);
             }
             return ValueTask.FromResult(rejected);
         }

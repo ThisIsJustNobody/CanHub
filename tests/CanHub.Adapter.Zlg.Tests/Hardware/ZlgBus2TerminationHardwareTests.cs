@@ -45,6 +45,7 @@ public sealed class ZlgBus2TerminationHardwareTests : ZlgCanHubHardwareTestBase
             status => status.Code == CanStatusCode.Recovered,
             TimeSpan.FromSeconds(5));
         TestContext.WriteLine($"Bus1 single-node fault={fault.Code}/{fault.NativeErrorCode:X8}, recovered attempts={recovered.Count}.");
+        Assert.IsTrue(tx.IsOpen, "Recovered ZLG channel should remain open after no-ack recovery.");
 
         await using var peer = await OpenZlgAsync(
             registry,
@@ -118,7 +119,7 @@ public sealed class ZlgBus2TerminationHardwareTests : ZlgCanHubHardwareTestBase
     public async Task Bus2_VectorCh2_UnterminatedBusFault_TriggersRecoveryAttempt()
     {
         RequireZlgHardware();
-        RequireVectorHardware();
+        RequireVectorBus2Hardware();
 
         var registry = CreateZlgVectorRegistry();
         var disabledClassic = new CanBusParameters

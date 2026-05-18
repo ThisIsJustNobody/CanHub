@@ -9,8 +9,11 @@ namespace CanHub.Adapter.Virtual.Internal;
 internal sealed class VirtualChannelState
 {
     private readonly object _statusGate = new();
+    private readonly object _injectorGate = new();
+    private readonly HashSet<VirtualFaultInjector> _faultInjectors = [];
     private int _referenceCount;
     private int _isOpen = 1;
+    private int _disposed;
     private int _recoveryInProgress;
     private CanRecoveryOptions _recovery = CanRecoveryOptions.Disabled;
     private event Action<CanStatusEvent>? _statusChanged;
@@ -34,7 +37,15 @@ internal sealed class VirtualChannelState
     public int ReferenceCount => _referenceCount;
 
     /// <summary>通道当前是否打开。<br/>Whether the channel is currently open.</summary>
-    public bool IsOpen => Volatile.Read(ref _isOpen) != 0;
+    public bool IsOpen => Volatile.Read(ref _disposed) == 0 && Volatile.Read(ref _isOpen) != 0;
+
+    /// <summary>通道是否正在自动恢复。<br/>Whether the channel is currently recovering.</summary>
+    public bool IsRecovering => Volatile.Read(ref _recoveryInProgress) != 0;
+
+    /// <summary>当前是否允许提交发送。<br/>Whether transmit submission is currently allowed.</summary>
+    public bool CanSubmitTransmit =>
+        IsOpen &&
+        (!IsRecovering || !RejectTransmitsWhileRecovering);
 
     public VirtualChannelState(int channelIndex, CanSequenceGenerator sequenceGenerator)
     {
@@ -60,6 +71,21 @@ internal sealed class VirtualChannelState
         }
     }
 
+    /// <summary>注册故障注入器，并在通道释放时自动注销。<br/>Registers a fault injector and unregisters it when the channel is disposed.</summary>
+    public void RegisterFaultInjector(VirtualFaultInjector faultInjector)
+    {
+        ArgumentNullException.ThrowIfNull(faultInjector);
+
+        lock (_injectorGate)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
+            if (_faultInjectors.Add(faultInjector))
+                faultInjector.Register(this);
+        }
+    }
+
     /// <summary>通道状态变更事件。<br/>Channel status change event.</summary>
     public event Action<CanStatusEvent>? StatusChanged
     {
@@ -80,6 +106,9 @@ internal sealed class VirtualChannelState
     /// <summary>注入 bus-off 故障。<br/>Injects a bus-off fault.</summary>
     public void InjectBusOff()
     {
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+
         PublishStatus(CanStatusEvent.Create(
             CanStatusKind.Bus,
             CanStatusCode.BusOff,
@@ -88,9 +117,15 @@ internal sealed class VirtualChannelState
             channelIndex: ChannelIndex,
             message: "Virtual CAN bus-off injected."));
 
-        var recovery = _recovery;
-        if (recovery.Mode == CanRecoveryMode.Disabled)
+        CanRecoveryOptions recovery;
+        lock (_statusGate)
+            recovery = _recovery;
+
+        if (recovery.Mode == CanRecoveryMode.Disabled ||
+            (recovery.Triggers & CanRecoveryTrigger.BusOff) == CanRecoveryTrigger.None)
+        {
             return;
+        }
 
         if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0)
         {
@@ -104,8 +139,38 @@ internal sealed class VirtualChannelState
             return;
         }
 
+        _ = Task.Run(() => RecoverAsync(recovery));
+    }
+
+    /// <summary>
+    /// 释放引用，返回释放后的引用计数。线程安全。<br/>
+    /// Releases a reference, returning the count after release. Thread-safe.
+    /// </summary>
+    public int ReleaseReference() => Interlocked.Decrement(ref _referenceCount);
+
+    /// <summary>
+    /// 释放通道资源，包括 Hub。<br/>
+    /// Disposes channel resources, including the Hub.
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        Volatile.Write(ref _isOpen, 0);
+        Volatile.Write(ref _recoveryInProgress, 0);
+        UnregisterFaultInjectors();
+        Hub.Dispose();
+    }
+
+    private async Task RecoverAsync(CanRecoveryOptions recovery)
+    {
         try
         {
+            await DelayIfNeededAsync(recovery.FaultDwellTime).ConfigureAwait(false);
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
             PublishStatus(CanStatusEvent.Create(
                 CanStatusKind.Bus,
                 CanStatusCode.Recovering,
@@ -128,11 +193,11 @@ internal sealed class VirtualChannelState
                     break;
 
                 case CanRecoveryMode.ResetOnFault:
-                    ReopenOnce(recovery);
+                    await ReopenOnceAsync(recovery).ConfigureAwait(false);
                     break;
 
                 case CanRecoveryMode.ReopenWithBackoff:
-                    ReopenWithBackoff(recovery);
+                    await ReopenWithBackoffAsync(recovery).ConfigureAwait(false);
                     break;
             }
         }
@@ -143,27 +208,15 @@ internal sealed class VirtualChannelState
         }
     }
 
-    /// <summary>
-    /// 释放引用，返回释放后的引用计数。线程安全。<br/>
-    /// Releases a reference, returning the count after release. Thread-safe.
-    /// </summary>
-    public int ReleaseReference() => Interlocked.Decrement(ref _referenceCount);
-
-    /// <summary>
-    /// 释放通道资源，包括 Hub。<br/>
-    /// Disposes channel resources, including the Hub.
-    /// </summary>
-    public void Dispose()
+    private async Task ReopenOnceAsync(CanRecoveryOptions recovery)
     {
         Volatile.Write(ref _isOpen, 0);
-        Hub.Dispose();
-    }
+        await DelayIfNeededAsync(recovery.RestartDelay).ConfigureAwait(false);
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
 
-    private void ReopenOnce(CanRecoveryOptions recovery)
-    {
-        Volatile.Write(ref _isOpen, 0);
-        SleepIfNeeded(recovery.RestartDelay);
         Volatile.Write(ref _isOpen, 1);
+        Volatile.Write(ref _recoveryInProgress, 0);
         PublishStatus(CanStatusEvent.Create(
             CanStatusKind.Bus,
             CanStatusCode.Recovered,
@@ -173,11 +226,15 @@ internal sealed class VirtualChannelState
             message: "Virtual channel reopened after bus-off."));
     }
 
-    private void ReopenWithBackoff(CanRecoveryOptions recovery)
+    private async Task ReopenWithBackoffAsync(CanRecoveryOptions recovery)
     {
         Volatile.Write(ref _isOpen, 0);
-        SleepIfNeeded(recovery.RestartDelay);
+        await DelayIfNeededAsync(recovery.RestartDelay).ConfigureAwait(false);
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+
         Volatile.Write(ref _isOpen, 1);
+        Volatile.Write(ref _recoveryInProgress, 0);
         PublishStatus(CanStatusEvent.Create(
             CanStatusKind.Bus,
             CanStatusCode.Recovered,
@@ -211,9 +268,31 @@ internal sealed class VirtualChannelState
         }
     }
 
-    private static void SleepIfNeeded(TimeSpan delay)
+    private void UnregisterFaultInjectors()
+    {
+        VirtualFaultInjector[] injectors;
+        lock (_injectorGate)
+        {
+            injectors = _faultInjectors.ToArray();
+            _faultInjectors.Clear();
+        }
+
+        foreach (var injector in injectors)
+            injector.Unregister(this);
+    }
+
+    private bool RejectTransmitsWhileRecovering
+    {
+        get
+        {
+            lock (_statusGate)
+                return _recovery.RejectTransmitsWhileRecovering;
+        }
+    }
+
+    private static async Task DelayIfNeededAsync(TimeSpan delay)
     {
         if (delay > TimeSpan.Zero)
-            Thread.Sleep(delay);
+            await Task.Delay(delay).ConfigureAwait(false);
     }
 }

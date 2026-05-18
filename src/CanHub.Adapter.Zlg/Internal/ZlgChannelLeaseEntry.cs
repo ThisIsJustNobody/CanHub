@@ -8,6 +8,9 @@ namespace CanHub.Adapter.Zlg.Internal;
 /// </summary>
 internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
 {
+    // 实测 USBCANFD_200U 在 ResetCAN/CloseDevice 返回后，驱动内部状态仍可能短暂残留。
+    // 恢复重开时保留一个 ZLG 专属最小等待，避免 restartDelay=0 时撞到 ZCAN_StartCAN Error(0)。
+    private static readonly TimeSpan NativeCloseSettleDelay = TimeSpan.FromMilliseconds(500);
     private readonly List<CanStatusEvent> _pendingDiagnostics = [];
     private readonly object _statusGate = new();
     private readonly ZlgChannelOpenSpec _openSpec;
@@ -380,7 +383,7 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
             return;
         }
 
-        await DelayIfNeededAsync(recovery.RestartDelay).ConfigureAwait(false);
+        await DelayIfNeededAsync(EffectiveRestartDelay(recovery.RestartDelay)).ConfigureAwait(false);
         if (IsClosingOrDisposed)
             return;
 
@@ -410,7 +413,7 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
 
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
-            await DelayIfNeededAsync(delay).ConfigureAwait(false);
+            await DelayIfNeededAsync(EffectiveRestartDelay(delay)).ConfigureAwait(false);
             if (IsClosingOrDisposed)
                 return;
 
@@ -463,6 +466,9 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
 
     private void PublishRecovered(ulong attemptCount)
     {
+        if (ChannelHandle != 0 && !IsClosingOrDisposed)
+            Volatile.Write(ref _recoveryInProgress, 0);
+
         PublishStatus(CanStatusEvent.Create(
             CanStatusKind.Bus,
             CanStatusCode.Recovered,
@@ -524,6 +530,9 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         var nextTicks = Math.Min(current.Ticks * 2, max.Ticks);
         return TimeSpan.FromTicks(nextTicks);
     }
+
+    private static TimeSpan EffectiveRestartDelay(TimeSpan configuredDelay) =>
+        configuredDelay > NativeCloseSettleDelay ? configuredDelay : NativeCloseSettleDelay;
 
     private static async Task DelayIfNeededAsync(TimeSpan delay)
     {

@@ -71,6 +71,8 @@ await using var bus = await registry.OpenAsync(
 
 `ResetOnFault` performs one close/reopen attempt. `ReopenWithBackoff` retries up to the configured attempt limit. Generic ZLG bus error objects, such as ACK and bit errors, can be recovered by enabling `CanRecoveryTrigger.NativeReceiveFault`.
 
+Observed on `USBCANFD_200U`: after error injection or fast close/reopen cycles, the native driver can keep transient state briefly after `ZCAN_ResetCAN`/`ZCAN_CloseDevice` has returned. Direct test runs may hit `ZCAN_StartCAN Error (0)`, while debugger-paced runs or added delay avoid it. The ZLG adapter therefore keeps a 500ms native-close settle window before automatic recovery reopen: caller-provided `RestartDelay` values above 500ms are honored, while smaller values, including `TimeSpan.Zero`, are raised to 500ms. If `ZCAN_StartCAN` returns `Error (0)`, the adapter resets the channel, waits 500ms, and retries the start up to six attempts; this covers both initial open and recovery reopen.
+
 ## Hardware Tests
 
 Hardware tests are skipped unless explicitly enabled:
@@ -88,7 +90,29 @@ Keep this variable disabled in normal CI unless the runner has a supported ZLG d
 
 The recovery hardware tests assume two `USBCANFD_200U` devices and two buses: one terminated bus for normal traffic and single-node No ACK recovery, and one unterminated bus for stable bit/native bus error recovery.
 
-Vector interop hardware tests additionally require `CANHUB_TEST_VECTOR=1`. By default they use `VN5610A` device index `0`, channel `2`; override with `CANHUB_TEST_VECTOR_DEVICE`, `CANHUB_TEST_VECTOR_DEVICE_INDEX`, and `CANHUB_TEST_VECTOR_CHANNEL_INDEX`.
+Vector interop hardware tests additionally require `CANHUB_TEST_VECTOR=1`. By default they use `VN5610A` device index `0`, channel `2`, and assume that Vector channel is connected to Bus1; override with `CANHUB_TEST_VECTOR_DEVICE`, `CANHUB_TEST_VECTOR_DEVICE_INDEX`, and `CANHUB_TEST_VECTOR_CHANNEL_INDEX`. To run the Bus2 unterminated Vector recovery test, also set `CANHUB_TEST_VECTOR_BUS2=1` and connect the Vector channel to Bus2.
+
+ZLG open-order diagnostics additionally require `CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS=1`. This diagnostic only opens and closes the two ZLG devices on Bus1 without transmitting frames; set `CANHUB_TEST_ZLG_OPEN_DIAG_ITERATIONS` to change the repeat count when investigating whether simultaneously opened device channels affect each other.
+
+When direct runs fail but debugger runs pass, use `CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS` to add an operation delay that simulates debugger pacing. For finer control, `CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS` waits after opening the first channel and before opening the second channel, while `CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS` waits after each channel close. In this hardware round, before the `StartCAN` retry was added, open-order diagnostics after bus-error injection could still reproduce `ZCAN_StartCAN Error (0)` for `deviceIndex=1&channel=0` with 500ms, 2000ms, and even 5000ms post-close delays. After adding the `StartCAN` retry, both the unpaced diagnostic and the 2000ms post-close paced diagnostic passed. This diagnostic covers repeated manual close/open cycles across different ZLG devices, so it is recorded separately from the automatic same-channel recovery path.
+
+You can also use the checked-in diagnostics settings file instead of setting environment variables manually:
+
+```powershell
+dotnet test tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj `
+  --settings tests/zlg-open-diagnostics.runsettings `
+  --filter "FullyQualifiedName~ZlgOpenDiagnosticsHardwareTests" `
+  --logger "console;verbosity=detailed"
+```
+
+To compare against debugger-like pacing, run the settings file that waits 2000ms after each channel close:
+
+```powershell
+dotnet test tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj `
+  --settings tests/zlg-open-diagnostics-paced.runsettings `
+  --filter "FullyQualifiedName~ZlgOpenDiagnosticsHardwareTests" `
+  --logger "console;verbosity=detailed"
+```
 
 ## Third-Party Runtime
 

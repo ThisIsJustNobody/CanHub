@@ -21,6 +21,20 @@ public abstract class ZlgCanHubHardwareTestBase
             Assert.Inconclusive("Skipping Vector interop test: CANHUB_TEST_VECTOR is not set.");
     }
 
+    protected static void RequireVectorBus2Hardware()
+    {
+        RequireVectorHardware();
+        if (!ZlgCanHubEnvironment.IsVectorBus2HardwareEnabled)
+            Assert.Inconclusive("Skipping Vector bus2 interop test: CANHUB_TEST_VECTOR_BUS2 is not set.");
+    }
+
+    protected static void RequireZlgOpenDiagnostics()
+    {
+        RequireZlgHardware();
+        if (!ZlgCanHubEnvironment.IsZlgOpenDiagnosticsEnabled)
+            Assert.Inconclusive("Skipping ZLG open diagnostics: CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS is not set.");
+    }
+
     protected static CanHubRegistry CreateZlgRegistry() =>
         CanHubRegistry.CreateDefault().AddZlgAdapter();
 
@@ -125,6 +139,12 @@ public sealed record ZlgCanHubEnvironment(
 
     public static bool IsVectorHardwareEnabled =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CANHUB_TEST_VECTOR"));
+
+    public static bool IsVectorBus2HardwareEnabled =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CANHUB_TEST_VECTOR_BUS2"));
+
+    public static bool IsZlgOpenDiagnosticsEnabled =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS"));
 
     public static ZlgCanHubEnvironment FromEnvironment() =>
         new(

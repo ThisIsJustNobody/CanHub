@@ -71,6 +71,8 @@ await using var bus = await registry.OpenAsync(
 
 `ResetOnFault` 只尝试一次关闭/重开；`ReopenWithBackoff` 会按配置的次数和退避策略重试。ZLG 的 ACK 错误、位错误等通用总线错误对象可通过 `CanRecoveryTrigger.NativeReceiveFault` 触发恢复。
 
+实测 `USBCANFD_200U` 在错误注入或快速关闭/重开后，`ZCAN_ResetCAN`/`ZCAN_CloseDevice` 返回后驱动内部状态仍可能短暂残留；直接运行测试可能遇到 `ZCAN_StartCAN Error(0)`，而调试模式或加入等待后不复现。因此 ZLG 适配器在自动恢复重开前保留 500ms 的原生关闭稳定窗口：调用方配置的 `RestartDelay` 大于 500ms 时按调用方配置执行，小于 500ms（包括 `TimeSpan.Zero`）时按 500ms 执行。同时，`ZCAN_StartCAN` 若返回 `Error(0)`，适配器会先 `ZCAN_ResetCAN`，再等待 500ms 后重试启动，最多 6 次；该重试覆盖初次打开和恢复重开。
+
 ## 硬件测试
 
 硬件测试默认跳过，需显式开启：
@@ -88,7 +90,29 @@ dotnet test tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj -c Re
 
 恢复相关硬件测试假设连接两台 `USBCANFD_200U` 和两条总线：一条带终端电阻，用于正常通信和单节点 No ACK 恢复；另一条不带终端电阻，用于稳定触发位错误/原生总线错误恢复。
 
-Vector 互通硬件测试还需要 `CANHUB_TEST_VECTOR=1`。默认使用 `VN5610A` 设备索引 `0`、通道 `2`；可通过 `CANHUB_TEST_VECTOR_DEVICE`、`CANHUB_TEST_VECTOR_DEVICE_INDEX` 和 `CANHUB_TEST_VECTOR_CHANNEL_INDEX` 覆盖。
+Vector 互通硬件测试还需要 `CANHUB_TEST_VECTOR=1`。默认使用 `VN5610A` 设备索引 `0`、通道 `2`，并假设该 Vector 通道接在 Bus1；可通过 `CANHUB_TEST_VECTOR_DEVICE`、`CANHUB_TEST_VECTOR_DEVICE_INDEX` 和 `CANHUB_TEST_VECTOR_CHANNEL_INDEX` 覆盖。若要运行 Bus2 无终端 Vector 故障恢复用例，还必须额外设置 `CANHUB_TEST_VECTOR_BUS2=1`，并确保 Vector 通道实际接入 Bus2。
+
+ZLG 打开顺序诊断用例需额外设置 `CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS=1`。该用例只反复打开/关闭两台 ZLG 在 Bus1 上的通道，不发送报文；可用 `CANHUB_TEST_ZLG_OPEN_DIAG_ITERATIONS` 调整重复次数，用于排查两个设备通道同时打开是否互相影响。
+
+若直接运行失败但调试模式不失败，可用 `CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS` 增加操作间隔，模拟调试器带来的延迟。需要更细分时，`CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS` 控制打开第一个通道后再打开第二个通道前的等待，`CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS` 控制每次关闭通道后的等待。本轮硬件观察中，加入 `StartCAN` 重试前，错误注入后继续跑打开顺序诊断时，关闭后等待 500ms、2000ms 甚至 5000ms 都可能稳定复现 `deviceIndex=1&channel=0` 的 `ZCAN_StartCAN Error(0)`；加入 `StartCAN` 重试后，无额外延迟和带 2000ms 关闭后等待的诊断均可通过。该诊断覆盖的是手动反复关闭/打开不同 ZLG 设备的驱动状态窗口，和自动恢复的同通道重开路径不是同一个通过标准。
+
+也可以直接使用仓库内置的诊断设置文件运行，避免手动设置环境变量：
+
+```powershell
+dotnet test tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj `
+  --settings tests/zlg-open-diagnostics.runsettings `
+  --filter "FullyQualifiedName~ZlgOpenDiagnosticsHardwareTests" `
+  --logger "console;verbosity=detailed"
+```
+
+若要对照调试模式的慢节奏，可运行带 2000ms 关闭后等待的设置文件：
+
+```powershell
+dotnet test tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj `
+  --settings tests/zlg-open-diagnostics-paced.runsettings `
+  --filter "FullyQualifiedName~ZlgOpenDiagnosticsHardwareTests" `
+  --logger "console;verbosity=detailed"
+```
 
 ## 第三方运行时
 

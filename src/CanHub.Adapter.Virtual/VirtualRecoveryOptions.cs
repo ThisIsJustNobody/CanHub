@@ -28,6 +28,12 @@ public sealed class VirtualFaultInjector
             _channels.Add(channelState);
     }
 
+    internal void Unregister(VirtualChannelState channelState)
+    {
+        lock (_gate)
+            _channels.Remove(channelState);
+    }
+
     /// <summary>向已注册虚拟通道注入 bus-off。<br/>Injects bus-off into registered virtual channels.</summary>
     public void InjectBusOff()
     {

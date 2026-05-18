@@ -6,6 +6,9 @@ namespace CanHub.Adapter.Zlg.Internal;
 /// </summary>
 internal sealed class ZlgNativeChannelLifecycle : IZlgChannelLifecycle
 {
+    private const int StartCanMaxAttempts = 6;
+    private static readonly TimeSpan StartCanRetryDelay = TimeSpan.FromMilliseconds(500);
+
     /// <summary>共享实例。<br/>Shared instance.</summary>
     public static ZlgNativeChannelLifecycle Instance { get; } = new();
 
@@ -44,7 +47,7 @@ internal sealed class ZlgNativeChannelLifecycle : IZlgChannelLifecycle
                     "ZCAN_SetValue(initenal_resistance)");
             }
 
-            ZlgNative.ThrowIfNotOk(ZlgNative.StartCan(channelHandle), "ZCAN_StartCAN");
+            StartCanWithRetry(channelHandle);
             ZlgNative.ThrowIfNotOk(ZlgNative.ClearBuffer(channelHandle), "ZCAN_ClearBuffer");
             return channelHandle;
         }
@@ -114,5 +117,30 @@ internal sealed class ZlgNativeChannelLifecycle : IZlgChannelLifecycle
                 nativeChannelIndex,
                 busParameters.IsNonIsoFd),
             "ZCAN_SetValue(canfd_standard)");
+    }
+
+    private static void StartCanWithRetry(nint channelHandle)
+    {
+        var status = ZlgNative.StartCan(channelHandle);
+        if (status == ZlgStatus.Ok)
+            return;
+
+        // USBCANFD_200U 在连续开关设备后可能短暂返回 ZCAN_StartCAN Error(0)，重试前先复位通道状态。
+        for (var attempt = 2; attempt <= StartCanMaxAttempts; attempt++)
+        {
+            var resetStatus = ZlgNative.ResetCan(channelHandle);
+            if (resetStatus != ZlgStatus.Ok)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    $"CanHub.Zlg failed to reset channel before StartCAN retry {attempt}: ZCAN_ResetCAN returned {resetStatus}.");
+            }
+
+            Thread.Sleep(StartCanRetryDelay);
+            status = ZlgNative.StartCan(channelHandle);
+            if (status == ZlgStatus.Ok)
+                return;
+        }
+
+        throw new ZlgApiException("ZCAN_StartCAN", status, $"attempts={StartCanMaxAttempts}");
     }
 }

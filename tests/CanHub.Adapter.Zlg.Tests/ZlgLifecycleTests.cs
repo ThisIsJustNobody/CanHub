@@ -112,6 +112,32 @@ public sealed class ZlgLifecycleTests
         Assert.IsTrue(entry.IsOpen);
     }
 
+    [TestMethod(DisplayName = "ZLG发布Recovered前通道已恢复打开状态")]
+    public async Task Recovery_RecoveredStatus_IsPublishedAfterEntryIsOpen()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 18,
+            recovery: CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        var isOpenDuringRecovered = false;
+        entry.StatusChanged += status =>
+        {
+            statuses.Enqueue(status);
+            if (status.Code == CanStatusCode.Recovered)
+                isOpenDuringRecovered = entry.IsOpen;
+        };
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Key.ChannelIndex));
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.IsTrue(isOpenDuringRecovered);
+        Assert.IsTrue(entry.IsOpen);
+    }
+
     [TestMethod(DisplayName = "ZLG ReopenWithBackoff按次数重试后恢复")]
     public async Task Recovery_ReopenWithBackoff_RetriesUntilOpenSucceeds()
     {
@@ -138,6 +164,31 @@ public sealed class ZlgLifecycleTests
         Assert.AreEqual(3, lifecycle.OpenCalls);
         Assert.AreEqual(3ul, recovered.Count);
         Assert.IsTrue(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG重开前保留原生关闭稳定窗口")]
+    public async Task Recovery_ResetOnFault_ZeroRestartDelay_WaitsForNativeCloseSettleWindow()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 19,
+            recovery: CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Key.ChannelIndex));
+
+        await lifecycle.CloseObserved.WaitAsync(TimeSpan.FromSeconds(1));
+        await Task.Delay(100);
+        Assert.AreEqual(0, lifecycle.OpenCalls, "ZLG should not reopen immediately after native close when restartDelay is zero.");
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.IsTrue(
+            lifecycle.FirstOpenAfterCloseElapsed >= TimeSpan.FromMilliseconds(450),
+            $"Expected at least 450ms between close and reopen, observed {lifecycle.FirstOpenAfterCloseElapsed.TotalMilliseconds}ms.");
     }
 
     [TestMethod(DisplayName = "ZLG原生总线错误可按NativeReceiveFault触发恢复")]
@@ -441,6 +492,9 @@ public sealed class ZlgLifecycleTests
     private sealed class FakeZlgChannelLifecycle : IZlgChannelLifecycle
     {
         private int _nextHandle = 100;
+        private readonly TaskCompletionSource _closeObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private long _firstCloseTimestamp;
+        private long _firstOpenTimestamp;
 
         public int CloseCalls { get; private set; }
 
@@ -450,8 +504,16 @@ public sealed class ZlgLifecycleTests
 
         public List<nint> ClosedHandles { get; } = [];
 
+        public Task CloseObserved => _closeObserved.Task;
+
+        public TimeSpan FirstOpenAfterCloseElapsed =>
+            _firstCloseTimestamp == 0 || _firstOpenTimestamp == 0
+                ? TimeSpan.Zero
+                : Stopwatch.GetElapsedTime(_firstCloseTimestamp, _firstOpenTimestamp);
+
         public nint OpenChannel(ZlgDeviceLeaseEntry device, ZlgChannelOpenSpec spec)
         {
+            Interlocked.CompareExchange(ref _firstOpenTimestamp, Stopwatch.GetTimestamp(), 0);
             OpenCalls++;
             if (OpenCalls <= FailOpenAttempts)
                 throw new ZlgApiException("ZCAN_InitCAN", ZlgStatus.Error);
@@ -461,8 +523,10 @@ public sealed class ZlgLifecycleTests
 
         public bool CloseChannel(nint channelHandle, int channelIndex, Action<CanStatusEvent> publishStatus)
         {
+            Interlocked.CompareExchange(ref _firstCloseTimestamp, Stopwatch.GetTimestamp(), 0);
             CloseCalls++;
             ClosedHandles.Add(channelHandle);
+            _closeObserved.TrySetResult();
             return true;
         }
     }
