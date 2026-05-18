@@ -135,7 +135,7 @@ internal sealed class ZlgDeviceLeaseEntry : IAsyncDisposable
         entry.BroadcastFrame(frameEvent);
 
         if ((ZlgDataObjectType)obj.DataType == ZlgDataObjectType.Error)
-            entry.PublishStatus(ZlgFrameConverter.ToStatusEvent(obj, sequence));
+            entry.HandleFaultStatus(ZlgFrameConverter.ToStatusEvent(obj, sequence));
     }
 
     /// <summary>

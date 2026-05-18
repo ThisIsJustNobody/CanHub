@@ -119,15 +119,16 @@ internal static class ZlgFrameConverter
     {
         var error = obj.ReadErrorData();
         var nativeErrorCode = BuildErrorCode(error);
+        var nodeState = (ZlgNodeState)error.NodeState;
         return CanStatusEvent.Create(
             CanStatusKind.Bus,
-            CanStatusCode.NativeDriverError,
-            MapSeverity((ZlgNodeState)error.NodeState),
+            MapStatusCode(nodeState),
+            MapSeverity(nodeState),
             sequence: sequence,
             channelIndex: obj.Channel,
             nativeStatusCode: error.ErrorType,
             nativeErrorCode: nativeErrorCode,
-            message: $"ZLG error: type={(ZlgErrorType)error.ErrorType}, subType={error.ErrorSubType}, node={(ZlgNodeState)error.NodeState}, rx={error.RxErrorCount}, tx={error.TxErrorCount}, data={error.ErrorData}.");
+            message: $"ZLG error: type={(ZlgErrorType)error.ErrorType}, subType={error.ErrorSubType}, node={nodeState}, rx={error.RxErrorCount}, tx={error.TxErrorCount}, data={error.ErrorData}.");
     }
 
     private static NativeCanFrame ToNativeClassic(CanFrame frame)
@@ -288,6 +289,11 @@ internal static class ZlgFrameConverter
         ((uint)error.ErrorSubType << 16) |
         ((uint)error.NodeState << 8) |
         error.ErrorData;
+
+    private static CanStatusCode MapStatusCode(ZlgNodeState state) =>
+        state == ZlgNodeState.BusOff
+            ? CanStatusCode.BusOff
+            : CanStatusCode.NativeDriverError;
 
     private static CanStatusSeverity MapSeverity(ZlgNodeState state) =>
         state switch

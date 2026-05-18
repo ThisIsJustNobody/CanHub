@@ -83,6 +83,7 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
                         $"Configuration conflict for ZLG channel '{key}'. Close existing session first.");
                 }
 
+                existing.ConfigureRecovery(context.Options.Recovery);
                 return new ZlgBus(existing, ReleaseChannel, ReleaseChannelAsync);
             }
 
@@ -247,29 +248,8 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
 
         try
         {
-            ConfigureChannelBeforeInit(device, key.ChannelIndex, busParameters);
-
-            var initConfig = NativeChannelInitConfig.CreateCanFd(
-                resolved.WorkMode,
-                resolved.AccCode,
-                resolved.AccMask);
-            channelHandle = ZlgNative.InitCan(
-                device.DeviceHandle,
-                checked((uint)key.ChannelIndex),
-                initConfig);
-
-            if (busParameters.TerminationEnabled.HasValue)
-            {
-                ZlgNative.ThrowIfNotOk(
-                    ZlgNative.SetInternalResistance(
-                        device.DeviceHandle,
-                        checked((uint)key.ChannelIndex),
-                        busParameters.TerminationEnabled.Value),
-                    "ZCAN_SetValue(initenal_resistance)");
-            }
-
-            ZlgNative.ThrowIfNotOk(ZlgNative.StartCan(channelHandle), "ZCAN_StartCAN");
-            ZlgNative.ThrowIfNotOk(ZlgNative.ClearBuffer(channelHandle), "ZCAN_ClearBuffer");
+            var openSpec = new ZlgChannelOpenSpec(key, busParameters, resolved);
+            channelHandle = ZlgNativeChannelLifecycle.Instance.OpenChannel(device, openSpec);
 
             hub = new FrameBroadcastHub(new CanSequenceGenerator());
             var displayName = $"ZLG {device.Capabilities.EndpointName} Device {key.DeviceIndex} Channel {key.ChannelIndex}";
@@ -281,7 +261,10 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
                 fingerprint,
                 busParameters.IsFd,
                 resolved.DefaultTransmitType,
-                displayName);
+                displayName,
+                openSpec,
+                context.Options.Recovery,
+                ZlgNativeChannelLifecycle.Instance);
 
             device.AddChannelReference();
             channelReferenceAdded = true;
@@ -294,47 +277,10 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
             if (channelReferenceAdded)
                 device.ReleaseChannelReference();
             if (channelHandle != 0)
-            {
-                var resetStatus = ZlgNative.ResetCan(channelHandle);
-                if (resetStatus != ZlgStatus.Ok)
-                {
-                    System.Diagnostics.Trace.TraceWarning(
-                        $"CanHub.Zlg failed to reset channel after open rollback: ZCAN_ResetCAN returned {resetStatus}.");
-                }
-            }
+                ZlgNativeChannelLifecycle.Instance.CloseChannel(channelHandle, key.ChannelIndex, _ => { });
             hub?.Dispose();
             throw;
         }
-    }
-
-    private static void ConfigureChannelBeforeInit(
-        ZlgDeviceLeaseEntry device,
-        int channelIndex,
-        CanBusParameters busParameters)
-    {
-        var nativeChannelIndex = checked((uint)channelIndex);
-        ZlgNative.ThrowIfNotOk(
-            ZlgNative.SetArbitrationBitrate(
-                device.DeviceHandle,
-                nativeChannelIndex,
-                checked((uint)busParameters.ArbitrationBitrate)),
-            "ZCAN_SetValue(canfd_abit_baud_rate)");
-        if (busParameters.IsFd)
-        {
-            ZlgNative.ThrowIfNotOk(
-                ZlgNative.SetDataBitrate(
-                    device.DeviceHandle,
-                    nativeChannelIndex,
-                    checked((uint)(busParameters.DataBitrate
-                        ?? throw new ArgumentNullException(nameof(busParameters.DataBitrate), "CAN FD data bitrate must be specified.")))),
-                "ZCAN_SetValue(canfd_dbit_baud_rate)");
-        }
-        ZlgNative.ThrowIfNotOk(
-            ZlgNative.SetCanFdStandard(
-                device.DeviceHandle,
-                nativeChannelIndex,
-                busParameters.IsNonIsoFd),
-            "ZCAN_SetValue(canfd_standard)");
     }
 
     private static async ValueTask ReleaseChannelAsync(

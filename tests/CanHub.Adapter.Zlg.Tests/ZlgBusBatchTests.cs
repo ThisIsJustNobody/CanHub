@@ -61,10 +61,14 @@ public sealed class ZlgBusBatchTests
         var sequenceGenerator = Activator.CreateInstance(sequenceGeneratorType, nonPublic: true)!;
         var hub = Activator.CreateInstance(hubType, sequenceGenerator)!;
 
+        var key = new ZlgChannelKey(capabilities.DeviceTypeId, DeviceIndex: 0, ChannelIndex: 0);
+        var busParameters = CanBusParameters.Classic500k;
+        var resolved = ZlgResolvedOpenOptions.Create(capabilities, busParameters, null);
+        var openSpec = new ZlgChannelOpenSpec(key, busParameters, resolved);
         return (ZlgChannelLeaseEntry)Activator.CreateInstance(
             typeof(ZlgChannelLeaseEntry),
             [
-                new ZlgChannelKey(capabilities.DeviceTypeId, DeviceIndex: 0, ChannelIndex: 0),
+                key,
                 device,
                 nint.Zero,
                 hub,
@@ -72,6 +76,9 @@ public sealed class ZlgBusBatchTests
                 false,
                 ZlgTransmitType.Single,
                 "Synthetic ZLG lease",
+                openSpec,
+                CanRecoveryOptions.Disabled,
+                ZlgNativeChannelLifecycle.Instance,
             ])!;
     }
 }

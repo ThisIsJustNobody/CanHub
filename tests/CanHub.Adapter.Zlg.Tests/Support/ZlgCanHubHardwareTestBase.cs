@@ -33,13 +33,15 @@ public abstract class ZlgCanHubHardwareTestBase
         uint channelIndex,
         CanBusParameters busParameters,
         ZlgOpenOptions? nativeOptions = null,
-        CancellationToken ct = default) =>
+        CancellationToken ct = default,
+        CanRecoveryOptions? recovery = null) =>
         registry.OpenAsync(
             $"zlg://USBCANFD_200U?deviceIndex={deviceIndex}&channel={channelIndex}",
             new CanOpenOptions
             {
                 BusParameters = busParameters,
                 NativeOptions = nativeOptions,
+                Recovery = recovery ?? CanRecoveryOptions.Disabled,
             },
             ct);
 

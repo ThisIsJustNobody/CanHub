@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using CanHub.Adapter.Zlg.Internal;
@@ -85,7 +87,94 @@ public sealed class ZlgLifecycleTests
         Assert.AreEqual(1, calls);
     }
 
-    private static ZlgChannelLeaseEntry CreateSyntheticLeaseEntry(bool mergedReceive)
+    [TestMethod(DisplayName = "ZLG ResetOnFault关闭并重开通道")]
+    public async Task Recovery_ResetOnFault_ClosesAndReopensChannel()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 10,
+            recovery: CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Key.ChannelIndex));
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        CollectionAssert.AreEqual(
+            new[] { CanStatusCode.BusOff, CanStatusCode.Recovering, CanStatusCode.Recovered },
+            statuses.Select(static status => status.Code).ToArray());
+        Assert.AreEqual(1, lifecycle.CloseCalls);
+        Assert.AreEqual(1, lifecycle.OpenCalls);
+        Assert.AreEqual((nint)10, lifecycle.ClosedHandles.Single());
+        Assert.IsTrue(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG ReopenWithBackoff按次数重试后恢复")]
+    public async Task Recovery_ReopenWithBackoff_RetriesUntilOpenSucceeds()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle
+        {
+            FailOpenAttempts = 2,
+        };
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 11,
+            recovery: CanRecoveryOptions.ReopenWithBackoff(
+                restartDelay: TimeSpan.Zero,
+                maxAttempts: 3,
+                maxBackoffDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Key.ChannelIndex));
+
+        var recovered = await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.AreEqual(1, lifecycle.CloseCalls);
+        Assert.AreEqual(3, lifecycle.OpenCalls);
+        Assert.AreEqual(3ul, recovered.Count);
+        Assert.IsTrue(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG原生总线错误可按NativeReceiveFault触发恢复")]
+    public async Task Recovery_NativeBusError_TriggersWhenNativeReceiveFaultIsConfigured()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 12,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                triggers: CanRecoveryTrigger.NativeReceiveFault,
+                restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        entry.HandleFaultStatus(CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.NativeDriverError,
+            CanStatusSeverity.Warning,
+            channelIndex: entry.Key.ChannelIndex,
+            nativeStatusCode: (uint)ZlgErrorType.BusError,
+            nativeErrorCode: BuildNativeErrorCode(ZlgErrorType.BusError, ZlgBusErrorSubType.AckError, ZlgNodeState.Warning),
+            message: "Synthetic ZLG ACK error."));
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.AreEqual(1, lifecycle.CloseCalls);
+        Assert.AreEqual(1, lifecycle.OpenCalls);
+        Assert.IsTrue(entry.IsOpen);
+    }
+
+    private static ZlgChannelLeaseEntry CreateSyntheticLeaseEntry(
+        bool mergedReceive,
+        nint channelHandle = 0,
+        CanRecoveryOptions? recovery = null,
+        IZlgChannelLifecycle? lifecycle = null)
     {
         var capabilities = ZlgDeviceTypeMap.Resolve("USBCANFD_200U");
         var deviceInfo = new ZlgDeviceInfo(
@@ -121,18 +210,25 @@ public sealed class ZlgLifecycleTests
             mergedReceive,
         ]);
 
+        var key = new ZlgChannelKey(capabilities.DeviceTypeId, DeviceIndex: 0, ChannelIndex: 0);
+        var busParameters = CanBusParameters.Classic500k;
+        var resolved = ZlgResolvedOpenOptions.Create(capabilities, busParameters, null);
+        var openSpec = new ZlgChannelOpenSpec(key, busParameters, resolved);
         var hub = CreateHub();
         return (ZlgChannelLeaseEntry)Activator.CreateInstance(
             typeof(ZlgChannelLeaseEntry),
             [
-                new ZlgChannelKey(capabilities.DeviceTypeId, DeviceIndex: 0, ChannelIndex: 0),
+                key,
                 device,
-                nint.Zero,
+                channelHandle,
                 hub,
                 new byte[32],
                 false,
                 ZlgTransmitType.Single,
                 "Synthetic ZLG lifecycle lease",
+                openSpec,
+                recovery ?? CanRecoveryOptions.Disabled,
+                lifecycle ?? ZlgNativeChannelLifecycle.Instance,
             ])!;
     }
 
@@ -164,5 +260,68 @@ public sealed class ZlgLifecycleTests
         public CanSubscriptionStatistics Statistics => default;
 
         public void Dispose() => Interlocked.Increment(ref _disposeCount);
+    }
+
+    private static CanStatusEvent CreateBusOffStatus(int channelIndex) =>
+        CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.BusOff,
+            CanStatusSeverity.Critical,
+            channelIndex: channelIndex,
+            message: "Synthetic ZLG bus-off.");
+
+    private static uint BuildNativeErrorCode(
+        ZlgErrorType errorType,
+        ZlgBusErrorSubType errorSubType,
+        ZlgNodeState nodeState) =>
+        ((uint)errorType << 24) |
+        ((uint)errorSubType << 16) |
+        ((uint)nodeState << 8);
+
+    private static async Task<CanStatusEvent> WaitForStatusAsync(
+        ConcurrentQueue<CanStatusEvent> statuses,
+        CanStatusCode code)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var match = statuses.FirstOrDefault(status => status.Code == code);
+            if (match.IsInitialized)
+                return match;
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail($"Timed out waiting for status {code}. Observed: {string.Join(", ", statuses.Select(static s => s.Code))}");
+        throw new UnreachableException();
+    }
+
+    private sealed class FakeZlgChannelLifecycle : IZlgChannelLifecycle
+    {
+        private int _nextHandle = 100;
+
+        public int CloseCalls { get; private set; }
+
+        public int OpenCalls { get; private set; }
+
+        public int FailOpenAttempts { get; init; }
+
+        public List<nint> ClosedHandles { get; } = [];
+
+        public nint OpenChannel(ZlgDeviceLeaseEntry device, ZlgChannelOpenSpec spec)
+        {
+            OpenCalls++;
+            if (OpenCalls <= FailOpenAttempts)
+                throw new ZlgApiException("ZCAN_InitCAN", ZlgStatus.Error);
+
+            return (nint)Interlocked.Increment(ref _nextHandle);
+        }
+
+        public bool CloseChannel(nint channelHandle, int channelIndex, Action<CanStatusEvent> publishStatus)
+        {
+            CloseCalls++;
+            ClosedHandles.Add(channelHandle);
+            return true;
+        }
     }
 }
