@@ -88,6 +88,8 @@ Keep this variable disabled in normal CI unless the runner has a supported ZLG d
 
 The recovery hardware tests assume two `USBCANFD_200U` devices and two buses: one terminated bus for normal traffic and single-node No ACK recovery, and one unterminated bus for stable bit/native bus error recovery.
 
+Vector interop hardware tests additionally require `CANHUB_TEST_VECTOR=1`. By default they use `VN5610A` device index `0`, channel `2`; override with `CANHUB_TEST_VECTOR_DEVICE`, `CANHUB_TEST_VECTOR_DEVICE_INDEX`, and `CANHUB_TEST_VECTOR_CHANNEL_INDEX`.
+
 ## Third-Party Runtime
 
 This package may include or load ZLG runtime files needed by the adapter. Installing or using ZLG drivers may require accepting ZLG's own license terms.

@@ -62,15 +62,9 @@ internal sealed class VectorChannelPort : IChannelLease
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (Interlocked.Increment(ref _referenceCount) == 1)
         {
-            var busParams = context.Options.BusParameters;
             try
             {
-                OpenPort(busParams.IsFd, context.Options.NativeOptions);
-                ConfigureBusParameters(busParams, context.Options.NativeOptions);
-                IsFd = busParams.IsFd;
-
-                SetNotification();
-                ActivateChannel();
+                OpenActivePort(context, ct);
             }
             catch
             {
@@ -81,6 +75,39 @@ internal sealed class VectorChannelPort : IChannelLease
                 throw;
             }
         }
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// 为自动恢复关闭端口，但不改变共享引用计数，也不将端口标记为永久释放。<br/>
+    /// Closes the port for automatic recovery without changing the shared reference count
+    /// or marking the port as permanently disposed.
+    /// </summary>
+    internal bool CloseForRecovery(Action<CanStatusEvent>? publishStatus)
+    {
+        DeactivateChannel(publishStatus);
+        ClosePort(publishStatus);
+        return true;
+    }
+
+    /// <summary>
+    /// 为自动恢复重新打开并激活端口。<br/>
+    /// Reopens and activates the port for automatic recovery.
+    /// </summary>
+    internal ValueTask ReopenForRecoveryAsync(CanOpenContext context, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        try
+        {
+            OpenActivePort(context, ct);
+        }
+        catch
+        {
+            DeactivateChannel(publishStatus: null);
+            ClosePort(publishStatus: null);
+            throw;
+        }
+
         return ValueTask.CompletedTask;
     }
 
@@ -97,6 +124,18 @@ internal sealed class VectorChannelPort : IChannelLease
             ClosePort(publishStatus: null);
         }
         return ValueTask.CompletedTask;
+    }
+
+    private void OpenActivePort(CanOpenContext context, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var busParams = context.Options.BusParameters;
+        OpenPort(busParams.IsFd, context.Options.NativeOptions);
+        ConfigureBusParameters(busParams, context.Options.NativeOptions);
+        IsFd = busParams.IsFd;
+        ct.ThrowIfCancellationRequested();
+        SetNotification();
+        ActivateChannel();
     }
 
     private void OpenPort(bool isFd, object? nativeOptions)

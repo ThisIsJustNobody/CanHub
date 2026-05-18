@@ -88,6 +88,8 @@ dotnet test tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj -c Re
 
 恢复相关硬件测试假设连接两台 `USBCANFD_200U` 和两条总线：一条带终端电阻，用于正常通信和单节点 No ACK 恢复；另一条不带终端电阻，用于稳定触发位错误/原生总线错误恢复。
 
+Vector 互通硬件测试还需要 `CANHUB_TEST_VECTOR=1`。默认使用 `VN5610A` 设备索引 `0`、通道 `2`；可通过 `CANHUB_TEST_VECTOR_DEVICE`、`CANHUB_TEST_VECTOR_DEVICE_INDEX` 和 `CANHUB_TEST_VECTOR_CHANNEL_INDEX` 覆盖。
+
 ## 第三方运行时
 
 本包可能包含或加载适配器所需的 ZLG 运行时文件。安装或使用 ZLG 驱动可能需要接受 ZLG 自身许可条款。

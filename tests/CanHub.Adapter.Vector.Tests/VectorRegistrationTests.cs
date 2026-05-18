@@ -136,6 +136,10 @@ public sealed class VectorRegistrationTests
         var hubType = coreAssembly.GetType("CanHub.Core.FrameBroadcastHub", throwOnError: true)!;
         var sequenceGenerator = Activator.CreateInstance(sequenceGeneratorType, nonPublic: true)!;
         var hub = Activator.CreateInstance(hubType, sequenceGenerator)!;
+        var context = new CanOpenContext(
+            CanEndpoint.Parse("vector://virtual?deviceIndex=0&channelIndex=0"),
+            new CanOpenOptions { BusParameters = CanBusParameters.Classic500k });
+        var openSpec = new VectorChannelOpenSpec(context);
 
         return (VectorChannelLeaseEntry)Activator.CreateInstance(
             typeof(VectorChannelLeaseEntry),
@@ -147,6 +151,9 @@ public sealed class VectorRegistrationTests
                 new byte[32],
                 false,
                 "Vector status test",
+                openSpec,
+                CanRecoveryOptions.Disabled,
+                VectorNativeChannelLifecycle.Instance,
             ])!;
     }
 

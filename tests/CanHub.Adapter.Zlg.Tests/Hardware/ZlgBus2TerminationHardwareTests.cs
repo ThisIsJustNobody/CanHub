@@ -11,7 +11,8 @@ public sealed class ZlgBus2TerminationHardwareTests : ZlgCanHubHardwareTestBase
     private static readonly CanRecoveryTrigger HardwareFaultTriggers =
         CanRecoveryTrigger.BusOff |
         CanRecoveryTrigger.ErrorPassive |
-        CanRecoveryTrigger.NativeReceiveFault;
+        CanRecoveryTrigger.NativeReceiveFault |
+        CanRecoveryTrigger.NativeTransmitFault;
 
     [TestMethod(DisplayName = "Bus1 terminated single node triggers No ACK recovery and then talks to peer")]
     public async Task Bus1_SingleNodeNoAck_ResetRecovery_ReopensAndThenTalksToPeer()
@@ -113,6 +114,62 @@ public sealed class ZlgBus2TerminationHardwareTests : ZlgCanHubHardwareTestBase
         Assert.IsTrue(recovered.Count is >= 1 and <= 2);
     }
 
+    [TestMethod(DisplayName = "Bus2 Vector CH2 unterminated bus fault triggers recovery attempt")]
+    public async Task Bus2_VectorCh2_UnterminatedBusFault_TriggersRecoveryAttempt()
+    {
+        RequireZlgHardware();
+        RequireVectorHardware();
+
+        var registry = CreateZlgVectorRegistry();
+        var disabledClassic = new CanBusParameters
+        {
+            IsFd = false,
+            ArbitrationBitrate = 500_000,
+            TerminationEnabled = false,
+        };
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        await using var vector = await OpenVectorAsync(
+            registry,
+            CanBusParameters.Classic500k,
+            TestContext.CancellationToken,
+            CanRecoveryOptions.ReopenWithBackoff(
+                triggers: HardwareFaultTriggers,
+                restartDelay: TimeSpan.Zero,
+                maxAttempts: 2,
+                maxBackoffDelay: TimeSpan.Zero));
+        await using var zlg0 = await OpenZlgAsync(
+            registry,
+            Env.Device0Index,
+            Env.Bus2Channel,
+            disabledClassic,
+            ct: TestContext.CancellationToken);
+        await using var zlg1 = await OpenZlgAsync(
+            registry,
+            Env.Device1Index,
+            Env.Bus2Channel,
+            disabledClassic,
+            ct: TestContext.CancellationToken);
+        vector.StatusChanged += statuses.Enqueue;
+
+        var frame = CanFrame.CreateData(CanId.Standard(0x574), [0x57, 0x40]);
+        var submitted = await vector.SendAsync(frame, ct: TestContext.CancellationToken);
+        TestContext.WriteLine($"Bus2 Vector CH2 unterminated send returned {submitted.Status}, native={submitted.NativeStatusCode}.");
+
+        var fault = await WaitForStatusAsync(
+            statuses,
+            status => status.Code is CanStatusCode.NativeDriverError or CanStatusCode.BusOff,
+            TimeSpan.FromSeconds(5));
+        var recovered = await WaitForStatusAsync(
+            statuses,
+            status => status.Code == CanStatusCode.Recovered,
+            TimeSpan.FromSeconds(5));
+        TestContext.WriteLine($"Bus2 Vector CH2 fault={fault.Code}/{fault.NativeErrorCode:X8}, recovered attempts={recovered.Count}.");
+
+        _ = zlg0;
+        _ = zlg1;
+        Assert.IsTrue(recovered.Count is >= 1 and <= 2);
+    }
+
     [TestMethod(DisplayName = "Bus2 termination disabled reports transmit failure or error frame")]
     public async Task Bus2_TerminationDisabled_ReportsSendFailureOrErrorFrame()
     {
@@ -199,7 +256,7 @@ public sealed class ZlgBus2TerminationHardwareTests : ZlgCanHubHardwareTestBase
             await Task.Delay(20);
         }
 
-        Assert.Fail($"Timed out waiting for ZLG status. Observed: {string.Join(", ", statuses.Select(static s => s.Code))}");
+        Assert.Fail($"Timed out waiting for hardware status. Observed: {string.Join(", ", statuses.Select(static s => s.Code))}");
         throw new UnreachableException();
     }
 }

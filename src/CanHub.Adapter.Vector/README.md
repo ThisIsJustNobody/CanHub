@@ -51,12 +51,38 @@ await using var bus = await registry.OpenAsync(
 
 Use `CanOpenOptions.BusParameters` for CAN FD when the target channel and hardware support CAN FD, for example `CanBusParameters.Fd500k2M`. Incompatible shared-channel settings are rejected through adapter-owned lease checks.
 
+## Recovery
+
+Vector recovery is opt-in through `CanOpenOptions.Recovery`. The default is `CanRecoveryOptions.Disabled`, which reports bus/native errors without closing or reopening the channel.
+
+When enabled, the adapter reuses the original open configuration, stops the receive loop, closes the XL port, reopens it, and restarts receive processing:
+
+```csharp
+await using var bus = await registry.OpenAsync(
+    "vector://VN5610A?deviceIndex=0&channel=2",
+    new CanOpenOptions
+    {
+        BusParameters = CanBusParameters.Classic500k,
+        Recovery = CanRecoveryOptions.ReopenWithBackoff(
+            triggers: CanRecoveryTrigger.BusOff |
+                      CanRecoveryTrigger.ErrorPassive |
+                      CanRecoveryTrigger.NativeReceiveFault |
+                      CanRecoveryTrigger.NativeTransmitFault)
+    },
+    CancellationToken.None);
+```
+
+`ResetOnFault` performs one close/reopen attempt. `ReopenWithBackoff` retries up to the configured attempt limit. Vector chip-state events can trigger `BusOff` or `ErrorPassive`; error frames, receive failures, and transmit failures can trigger the native fault options.
+
 ## Hardware Tests
 
 Hardware tests are skipped unless explicitly enabled:
 
 ```powershell
 $env:CANHUB_TEST_VECTOR = "1"
+$env:CANHUB_TEST_VECTOR_DEVICE = "VN5610A"
+$env:CANHUB_TEST_VECTOR_DEVICE_INDEX = "0"
+$env:CANHUB_TEST_VECTOR_CHANNEL_INDEX = "2"
 dotnet test tests/CanHub.Adapter.Vector.Tests/CanHub.Adapter.Vector.Tests.csproj -c Release
 ```
 

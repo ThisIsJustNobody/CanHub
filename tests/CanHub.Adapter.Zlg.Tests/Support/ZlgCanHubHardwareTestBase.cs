@@ -48,10 +48,15 @@ public abstract class ZlgCanHubHardwareTestBase
     protected static ValueTask<ICanBus> OpenVectorAsync(
         CanHubRegistry registry,
         CanBusParameters busParameters,
-        CancellationToken ct = default) =>
+        CancellationToken ct = default,
+        CanRecoveryOptions? recovery = null) =>
         registry.OpenAsync(
-            $"vector://VN5610A?deviceIndex={Env.VectorDeviceIndex}&channel={Env.VectorChannelIndex}",
-            new CanOpenOptions { BusParameters = busParameters },
+            $"vector://{Env.VectorDeviceName}?deviceIndex={Env.VectorDeviceIndex}&channel={Env.VectorChannelIndex}",
+            new CanOpenOptions
+            {
+                BusParameters = busParameters,
+                Recovery = recovery ?? CanRecoveryOptions.Disabled,
+            },
             ct);
 
     protected static async Task<CanFrameEvent> WaitForFrameAsync(
@@ -111,6 +116,7 @@ public sealed record ZlgCanHubEnvironment(
     uint Bus1Channel,
     uint Bus2Channel,
     uint ScanDepth,
+    string VectorDeviceName,
     uint VectorDeviceIndex,
     uint VectorChannelIndex)
 {
@@ -127,8 +133,15 @@ public sealed record ZlgCanHubEnvironment(
             GetUInt32("CANHUB_TEST_ZLG_BUS1_CHANNEL", 0),
             GetUInt32("CANHUB_TEST_ZLG_BUS2_CHANNEL", 1),
             GetUInt32("CANHUB_TEST_ZLG_SCAN_DEPTH", 2),
-            GetUInt32("CANHUB_TEST_VECTOR_DEVICE", 0),
+            GetString("CANHUB_TEST_VECTOR_DEVICE", "VN5610A"),
+            GetUInt32("CANHUB_TEST_VECTOR_DEVICE_INDEX", GetUInt32("CANHUB_TEST_VECTOR_DEVICE", 0)),
             GetUInt32("CANHUB_TEST_VECTOR_CHANNEL_INDEX", 2));
+
+    private static string GetString(string name, string defaultValue)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) || uint.TryParse(value, out _) ? defaultValue : value;
+    }
 
     private static uint GetUInt32(string name, uint defaultValue)
     {
