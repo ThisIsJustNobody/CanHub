@@ -149,6 +149,16 @@ internal sealed class ZlgDeviceLeaseEntry : IAsyncDisposable
     }
 
     /// <summary>
+    /// 处理合并接收循环原生故障，并将故障路由到所有已注册通道的恢复协调器。<br/>
+    /// Handles a merged receive-loop native fault and routes it to every registered channel recovery coordinator.
+    /// </summary>
+    public void HandleReceiveLoopFault(string message)
+    {
+        foreach (var entry in _routes.Values)
+            entry.HandleReceiveLoopFault(message);
+    }
+
+    /// <summary>
     /// 释放设备。停止合并接收循环，关闭设备句柄。<br/>
     /// Disposes the device. Stops the merged receive loop and closes the device handle.
     /// </summary>

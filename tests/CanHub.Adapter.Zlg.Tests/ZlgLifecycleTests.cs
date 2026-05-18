@@ -170,6 +170,116 @@ public sealed class ZlgLifecycleTests
         Assert.IsTrue(entry.IsOpen);
     }
 
+    [TestMethod(DisplayName = "ZLG发送原生错误可按NativeTransmitFault触发恢复")]
+    public async Task Recovery_NativeTransmitFault_FromBusSendPath_TriggersRecovery()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 13,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                triggers: CanRecoveryTrigger.NativeTransmitFault,
+                restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        using var bus = new ZlgBus(entry, static _ => { }, static (_, _) => ValueTask.CompletedTask);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        InvokePublishTransmitError(bus, correlationId: 99, nativeStatusCode: 0, nativeErrorCode: 0, "Synthetic transmit failure.");
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.AreEqual(1, lifecycle.CloseCalls);
+        Assert.AreEqual(1, lifecycle.OpenCalls);
+        Assert.IsTrue(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG非合并接收循环错误可按NativeReceiveFault触发恢复")]
+    public async Task Recovery_NonMergedReceiveLoopFault_TriggersRecovery()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: false,
+            channelHandle: 14,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                triggers: CanRecoveryTrigger.NativeReceiveFault,
+                restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        entry.HandleReceiveLoopFault("Synthetic non-merged receive failure.");
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.AreEqual(1, lifecycle.CloseCalls);
+        Assert.AreEqual(1, lifecycle.OpenCalls);
+        Assert.IsTrue(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG合并接收循环错误可按NativeReceiveFault触发已注册通道恢复")]
+    public async Task Recovery_MergedReceiveLoopFault_TriggersRegisteredChannelRecovery()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 15,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                triggers: CanRecoveryTrigger.NativeReceiveFault,
+                restartDelay: TimeSpan.Zero),
+            lifecycle: lifecycle);
+        RegisterRouteForTesting(entry);
+        var statuses = new ConcurrentQueue<CanStatusEvent>();
+        entry.StatusChanged += statuses.Enqueue;
+
+        entry.Device.HandleReceiveLoopFault("Synthetic merged receive failure.");
+
+        await WaitForStatusAsync(statuses, CanStatusCode.Recovered);
+
+        Assert.AreEqual(1, lifecycle.CloseCalls);
+        Assert.AreEqual(1, lifecycle.OpenCalls);
+        Assert.IsTrue(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG恢复等待期间释放不会重新打开通道")]
+    public async Task Recovery_DisposeDuringRestartDelay_DoesNotReopenChannel()
+    {
+        var lifecycle = new FakeZlgChannelLifecycle();
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 16,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                restartDelay: TimeSpan.FromMilliseconds(150)),
+            lifecycle: lifecycle);
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Key.ChannelIndex));
+        await WaitUntilAsync(() => lifecycle.CloseCalls == 1);
+        entry.MarkClosing();
+        Assert.IsTrue(entry.Dispose());
+        await Task.Delay(250);
+
+        Assert.AreEqual(0, lifecycle.OpenCalls);
+        Assert.IsFalse(entry.IsOpen);
+    }
+
+    [TestMethod(DisplayName = "ZLG配置恢复中不拒绝发送时保持提交允许")]
+    public async Task Recovery_RejectTransmitsFalse_AllowsSubmitWhileHandleIsStillOpen()
+    {
+        var entry = CreateSyntheticLeaseEntry(
+            mergedReceive: true,
+            channelHandle: 17,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                faultDwellTime: TimeSpan.FromMilliseconds(150),
+                restartDelay: TimeSpan.Zero,
+                rejectTransmitsWhileRecovering: false),
+            lifecycle: new FakeZlgChannelLifecycle());
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Key.ChannelIndex));
+        await WaitUntilAsync(() => entry.IsRecovering);
+
+        Assert.IsTrue(entry.CanSubmitTransmit);
+    }
+
     private static ZlgChannelLeaseEntry CreateSyntheticLeaseEntry(
         bool mergedReceive,
         nint channelHandle = 0,
@@ -294,6 +404,38 @@ public sealed class ZlgLifecycleTests
 
         Assert.Fail($"Timed out waiting for status {code}. Observed: {string.Join(", ", statuses.Select(static s => s.Code))}");
         throw new UnreachableException();
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (predicate())
+                return;
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail("Timed out waiting for expected condition.");
+    }
+
+    private static void InvokePublishTransmitError(
+        ZlgBus bus,
+        ulong correlationId,
+        uint nativeStatusCode,
+        uint nativeErrorCode,
+        string message) =>
+        typeof(ZlgBus)
+            .GetMethod("PublishTransmitError", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(bus, [correlationId, nativeStatusCode, nativeErrorCode, message]);
+
+    private static void RegisterRouteForTesting(ZlgChannelLeaseEntry entry)
+    {
+        var routes = (ConcurrentDictionary<int, ZlgChannelLeaseEntry>)typeof(ZlgDeviceLeaseEntry)
+            .GetField("_routes", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(entry.Device)!;
+        routes[entry.Key.ChannelIndex] = entry;
     }
 
     private sealed class FakeZlgChannelLifecycle : IZlgChannelLifecycle

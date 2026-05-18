@@ -114,11 +114,7 @@ internal sealed class ZlgMergedReceiveLoop
             }
             catch (Exception ex)
             {
-                _device.PublishStatusToAll(CanStatusEvent.Create(
-                    CanStatusKind.Receive,
-                    CanStatusCode.NativeDriverError,
-                    CanStatusSeverity.Error,
-                    message: $"ZLG merged receive loop failed: {ex.Message}"));
+                _device.HandleReceiveLoopFault($"ZLG merged receive loop failed: {ex.Message}");
                 if (await DelayAfterFaultAsync().ConfigureAwait(false))
                     break;
             }
@@ -276,12 +272,7 @@ internal sealed class ZlgNonMergedReceiveLoop
             }
             catch (Exception ex)
             {
-                _entry.PublishStatus(CanStatusEvent.Create(
-                    CanStatusKind.Receive,
-                    CanStatusCode.NativeDriverError,
-                    CanStatusSeverity.Error,
-                    channelIndex: _entry.Key.ChannelIndex,
-                    message: $"ZLG non-merged receive loop failed: {ex.Message}"));
+                _entry.HandleReceiveLoopFault($"ZLG non-merged receive loop failed: {ex.Message}");
                 if (await DelayAfterFaultAsync().ConfigureAwait(false))
                     break;
             }

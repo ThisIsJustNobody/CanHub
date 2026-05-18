@@ -129,6 +129,23 @@ public sealed class VectorLifecycleTests
         Assert.IsTrue(entry.IsOpen);
     }
 
+    [TestMethod(DisplayName = "Vector配置恢复中不拒绝发送时保持提交允许")]
+    public async Task Recovery_RejectTransmitsFalse_AllowsSubmitWhilePortIsStillOpen()
+    {
+        var entry = CreateLeaseEntry(
+            portHandle: 13,
+            recovery: CanRecoveryOptions.ResetOnFault(
+                faultDwellTime: TimeSpan.FromMilliseconds(150),
+                restartDelay: TimeSpan.Zero,
+                rejectTransmitsWhileRecovering: false),
+            lifecycle: new FakeVectorChannelLifecycle());
+
+        entry.HandleFaultStatus(CreateBusOffStatus(entry.Port.LogicalChannelIndex));
+        await WaitUntilAsync(() => entry.IsRecovering);
+
+        Assert.IsTrue(entry.CanSubmitTransmit);
+    }
+
     [TestMethod(DisplayName = "VectorDriver打开抛异常后允许下一次Acquire重试")]
     [DoNotParallelize]
     public async Task DriverAcquire_OpenThrows_AllowsSubsequentRetry()
@@ -298,6 +315,20 @@ public sealed class VectorLifecycleTests
 
         Assert.Fail($"Timed out waiting for status {code}. Observed: {string.Join(", ", statuses.Select(static s => s.Code))}");
         throw new UnreachableException();
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (predicate())
+                return;
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail("Timed out waiting for expected condition.");
     }
 
     private sealed class FakeVectorChannelLifecycle : IVectorChannelLifecycle

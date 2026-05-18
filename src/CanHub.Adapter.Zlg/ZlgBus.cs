@@ -80,7 +80,7 @@ internal sealed class ZlgBus : ICanBus
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ct.ThrowIfCancellationRequested();
 
-        if (!_entry.IsOpen)
+        if (!_entry.CanSubmitTransmit)
         {
             var rejectId = _entry.HubAllocateSequence();
             return ValueTask.FromResult(CanTransmitSubmissionResult.Failed(
@@ -226,7 +226,7 @@ internal sealed class ZlgBus : ICanBus
         uint nativeErrorCode,
         string message)
     {
-        _entry.PublishStatus(CanStatusEvent.Create(
+        _entry.HandleFaultStatus(CanStatusEvent.Create(
             CanStatusKind.Transmit,
             CanStatusCode.NativeDriverError,
             CanStatusSeverity.Error,

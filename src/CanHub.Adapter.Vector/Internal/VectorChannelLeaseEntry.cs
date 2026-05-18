@@ -81,6 +81,11 @@ internal sealed class VectorChannelLeaseEntry : IAsyncDisposable
         !IsRecovering;
     /// <summary>通道是否正在自动恢复。</summary>
     public bool IsRecovering => Volatile.Read(ref _recoveryInProgress) != 0;
+    /// <summary>当前是否允许提交发送。</summary>
+    public bool CanSubmitTransmit =>
+        Volatile.Read(ref _disposeState) == 0 &&
+        Port.IsOpen &&
+        (!IsRecovering || !RejectTransmitsWhileRecovering);
     /// <summary>是否正在关闭或已释放。</summary>
     public bool IsClosingOrDisposed => Volatile.Read(ref _disposeState) != 0;
 
@@ -466,6 +471,15 @@ internal sealed class VectorChannelLeaseEntry : IAsyncDisposable
 
     private static bool IsRecoveryOpenException(Exception ex) =>
         ex is CanException or ObjectDisposedException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException;
+
+    private bool RejectTransmitsWhileRecovering
+    {
+        get
+        {
+            lock (_statusGate)
+                return _recovery.RejectTransmitsWhileRecovering;
+        }
+    }
 
     private static TimeSpan NextBackoffDelay(TimeSpan current, TimeSpan max)
     {

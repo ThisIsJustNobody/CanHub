@@ -88,6 +88,12 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     /// <summary>通道是否正在自动恢复。<br/>Whether the channel is currently recovering.</summary>
     public bool IsRecovering => Volatile.Read(ref _recoveryInProgress) != 0;
 
+    /// <summary>当前是否允许提交发送。<br/>Whether transmit submission is currently allowed.</summary>
+    public bool CanSubmitTransmit =>
+        Volatile.Read(ref _disposed) == 0 &&
+        ChannelHandle != 0 &&
+        (!IsRecovering || !RejectTransmitsWhileRecovering);
+
     /// <summary>是否正在关闭或已释放。<br/>Whether closing or disposed.</summary>
     public bool IsClosingOrDisposed => Volatile.Read(ref _disposed) != 0;
 
@@ -264,6 +270,21 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     }
 
     /// <summary>
+    /// 处理接收循环原生故障，并按恢复策略决定是否自动恢复。<br/>
+    /// Handles a native receive-loop fault and starts automatic recovery when configured.
+    /// </summary>
+    public void HandleReceiveLoopFault(string message)
+    {
+        HandleFaultStatus(CanStatusEvent.Create(
+            CanStatusKind.Receive,
+            CanStatusCode.NativeDriverError,
+            CanStatusSeverity.Error,
+            sequence: HubAllocateSequence(),
+            channelIndex: Key.ChannelIndex,
+            message: message));
+    }
+
+    /// <summary>
     /// 释放通道。停止非合并接收循环，复位并释放通道句柄。<br/>
     /// Disposes the channel. Stops the non-merged receive loop, resets and releases the channel handle.
     /// </summary>
@@ -300,6 +321,9 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         try
         {
             await DelayIfNeededAsync(recovery.FaultDwellTime).ConfigureAwait(false);
+            if (IsClosingOrDisposed)
+                return;
+
             PublishStatus(CanStatusEvent.Create(
                 CanStatusKind.Bus,
                 CanStatusCode.Recovering,
@@ -357,6 +381,9 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         }
 
         await DelayIfNeededAsync(recovery.RestartDelay).ConfigureAwait(false);
+        if (IsClosingOrDisposed)
+            return;
+
         try
         {
             OpenChannelAfterRecovery();
@@ -384,6 +411,9 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             await DelayIfNeededAsync(delay).ConfigureAwait(false);
+            if (IsClosingOrDisposed)
+                return;
+
             try
             {
                 OpenChannelAfterRecovery();
@@ -475,7 +505,16 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     }
 
     private static bool IsRecoveryOpenException(Exception ex) =>
-        ex is CanException || ex is ZlgApiException || ZlgExceptionMapper.IsNativeBoundaryException(ex);
+        ex is CanException || ex is ObjectDisposedException || ex is ZlgApiException || ZlgExceptionMapper.IsNativeBoundaryException(ex);
+
+    private bool RejectTransmitsWhileRecovering
+    {
+        get
+        {
+            lock (_statusGate)
+                return _recovery.RejectTransmitsWhileRecovering;
+        }
+    }
 
     private static TimeSpan NextBackoffDelay(TimeSpan current, TimeSpan max)
     {

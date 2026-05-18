@@ -80,7 +80,7 @@ internal sealed class VectorBus : ICanBus
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ct.ThrowIfCancellationRequested();
 
-        if (!_entry.IsOpen)
+        if (!_entry.CanSubmitTransmit)
         {
             var rejectId = _entry.Hub.AllocateSequence();
             return ValueTask.FromResult(CanTransmitSubmissionResult.Failed(
