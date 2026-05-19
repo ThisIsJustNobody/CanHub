@@ -1,3 +1,5 @@
+using CanHub.Core;
+
 namespace CanHub.Adapter.Vector.Internal;
 
 /// <summary>
@@ -11,6 +13,32 @@ internal static class VectorBusParameterCalculator
     private const int FdClockFrequency = 80_000_000;
     private const int FdArbitrationPreferredBtlCycles = 8;
     private const int FdDataPreferredBtlCycles = 40;
+    private static readonly CanBitTimingConstraints s_classicConstraints = new()
+    {
+        PrescalerMinimum = 1,
+        PrescalerMaximum = 64,
+        PrescalerIncrement = 1,
+        TimeQuantaPerBitMinimum = 8,
+        TimeQuantaPerBitMaximum = 25,
+        TimeSegment1Minimum = 1,
+        TimeSegment1Maximum = 16,
+        TimeSegment2Minimum = 1,
+        TimeSegment2Maximum = 8,
+        SynchronizationJumpWidthMaximum = 4,
+    };
+
+    private static readonly CanBitTimingConstraints s_fdConstraints = new()
+    {
+        PrescalerMinimum = 1,
+        PrescalerMaximum = 64,
+        PrescalerIncrement = 1,
+        TimeQuantaPerBitMinimum = 4,
+        TimeSegment1Minimum = 1,
+        TimeSegment1Maximum = 254,
+        TimeSegment2Minimum = 1,
+        TimeSegment2Maximum = 254,
+        SynchronizationJumpWidthMaximum = 128,
+    };
 
     /// <summary>
     /// 计算经典 CAN 位时序参数 (BRP, Tseg1, Tseg2, Sjw)，采样点 75%。<br/>
@@ -19,13 +47,11 @@ internal static class VectorBusParameterCalculator
     public static (int Brp, int Tseg1, int Tseg2, int Sjw) CalculateClassicBitTiming(
         int targetBitrate, int clockFrequency = ClassicClockFrequency)
     {
-        return CalculateBySamplePoint(
+        return CalculateVectorTiming(
             targetBitrate,
             clockFrequency,
-            divisorFactor: 2,
-            maxPrescaler: 64,
-            maxTseg1: 16,
-            maxTseg2: 8,
+            clockDivisor: 2,
+            constraints: s_classicConstraints,
             preferredBtlCycles: 16);
     }
 
@@ -58,70 +84,47 @@ internal static class VectorBusParameterCalculator
         int clockFrequency = FdClockFrequency,
         int preferredBtlCycles = FdDataPreferredBtlCycles)
     {
-        return CalculateBySamplePoint(
+        return CalculateVectorTiming(
             targetBitrate,
             clockFrequency,
-            divisorFactor: 1,
-            maxPrescaler: 64,
-            maxTseg1: 254,
-            maxTseg2: 254,
+            clockDivisor: 1,
+            constraints: s_fdConstraints,
             preferredBtlCycles);
     }
 
     /// <summary>
-    /// 按采样点模型计算位时序。穷举预分频器值，选择采样点误差最小且 BTL 周期数最接近目标的配置。<br/>
-    /// Calculates bit timing by sample point model. Exhausts prescaler values and selects
-    /// the configuration with minimal sample point error and BTL cycles closest to target.
+    /// 使用 Core 通用计算器和 Vector 控制器约束计算位时序。<br/>
+    /// Calculates bit timing through the Core generic calculator and Vector controller constraints.
     /// </summary>
-    private static (int Brp, int Tseg1, int Tseg2, int Sjw) CalculateBySamplePoint(
+    private static (int Brp, int Tseg1, int Tseg2, int Sjw) CalculateVectorTiming(
         int targetBitrate,
         int clockFrequency,
-        int divisorFactor,
-        int maxPrescaler,
-        int maxTseg1,
-        int maxTseg2,
+        int clockDivisor,
+        CanBitTimingConstraints constraints,
         int preferredBtlCycles)
     {
-        if (targetBitrate <= 0)
-            throw new ArgumentOutOfRangeException(nameof(targetBitrate));
-        if (clockFrequency <= 0)
-            throw new ArgumentOutOfRangeException(nameof(clockFrequency));
-
-        (int Brp, int Tseg1, int Tseg2, int Sjw, double SamplePointError, int BtlCycles)? best = null;
-
-        for (var prescaler = 1; prescaler <= maxPrescaler; prescaler++)
+        try
         {
-            var denominator = targetBitrate * prescaler * divisorFactor;
-            if (clockFrequency % denominator != 0)
-                continue;
-
-            var btlCycles = clockFrequency / denominator;
-            if (btlCycles < 4)
-                continue;
-
-            var tseg1 = (int)(btlCycles * DefaultSamplePoint - 1);
-            var tseg2 = btlCycles - 1 - tseg1;
-            if (tseg1 <= 1 || tseg1 > maxTseg1 || tseg2 <= 1 || tseg2 > maxTseg2)
-                continue;
-
-            var actualSamplePoint = (1 + tseg1) / (double)btlCycles;
-            var samplePointError = Math.Abs(actualSamplePoint - DefaultSamplePoint);
-            var candidate = (prescaler, tseg1, tseg2, Sjw: 1, samplePointError, btlCycles);
-
-            if (best is null ||
-                candidate.samplePointError < best.Value.SamplePointError ||
-                (candidate.samplePointError == best.Value.SamplePointError &&
-                 Math.Abs(candidate.btlCycles - preferredBtlCycles) < Math.Abs(best.Value.BtlCycles - preferredBtlCycles)))
+            var timing = CanBitTimingCalculator.Calculate(new CanBitTimingCalculationRequest
             {
-                best = candidate;
-            }
+                TargetBitrate = targetBitrate,
+                ClockFrequency = clockFrequency,
+                ClockDivisor = clockDivisor,
+                SamplePoint = DefaultSamplePoint,
+                PreferredTimeQuantaPerBit = preferredBtlCycles,
+                SynchronizationJumpWidth = 1,
+                MaximumBitrateError = 0,
+                Constraints = constraints,
+            });
+
+            return (timing.Prescaler, timing.TimeSegment1, timing.TimeSegment2, timing.SynchronizationJumpWidth);
         }
-
-        if (best is { } timing)
-            return (timing.Brp, timing.Tseg1, timing.Tseg2, timing.Sjw);
-
-        throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
-            $"Vector adapter cannot calculate bit timing for bitrate {targetBitrate} with clock {clockFrequency}.");
+        catch (CanException ex) when (ex.Category == CanErrorCategory.ConfigurationConflict)
+        {
+            throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
+                $"Vector adapter cannot calculate bit timing for bitrate {targetBitrate} with clock {clockFrequency}.",
+                ex);
+        }
     }
 
     /// <summary>
