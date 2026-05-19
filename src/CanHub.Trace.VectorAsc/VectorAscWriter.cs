@@ -13,6 +13,11 @@ public static class VectorAscWriter
     /// 将帧记录写入 ASC 字符串。<br/>
     /// Writes frame records to an ASC string.
     /// </summary>
+    /// <param name="frames">要写出的 ASC 帧记录。<br/>ASC frame records to write.</param>
+    /// <param name="options">写入选项。<br/>Write options.</param>
+    /// <returns>ASC 文本内容。<br/>ASC text content.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="frames"/> 为空。<br/><paramref name="frames"/> is null.</exception>
+    /// <exception cref="ArgumentException">帧记录无法以 ASC 表示。<br/>A frame record cannot be represented as ASC.</exception>
     public static string WriteText(IEnumerable<VectorAscFrame> frames, VectorAscWriteOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(frames);
@@ -26,9 +31,15 @@ public static class VectorAscWriter
     /// 将帧记录写入 ASC 文件。<br/>
     /// Writes frame records to an ASC file.
     /// </summary>
+    /// <param name="path">目标 ASC 文件路径。<br/>Destination ASC file path.</param>
+    /// <param name="frames">要写出的 ASC 帧记录。<br/>ASC frame records to write.</param>
+    /// <param name="options">写入选项。<br/>Write options.</param>
+    /// <exception cref="ArgumentException"><paramref name="path"/> 为空或仅包含空白，或帧记录无法以 ASC 表示。<br/><paramref name="path"/> is empty or whitespace, or a frame record cannot be represented as ASC.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="frames"/> 为空。<br/><paramref name="frames"/> is null.</exception>
     public static void WriteFile(string path, IEnumerable<VectorAscFrame> frames, VectorAscWriteOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(frames);
         using var writer = new StreamWriter(path, append: false, Encoding.UTF8);
         Write(writer, frames, options);
     }
@@ -37,6 +48,11 @@ public static class VectorAscWriter
     /// 将帧记录写入文本写入器。<br/>
     /// Writes frame records to a text writer.
     /// </summary>
+    /// <param name="writer">文本写入器。<br/>Text writer.</param>
+    /// <param name="frames">要写出的 ASC 帧记录。<br/>ASC frame records to write.</param>
+    /// <param name="options">写入选项。<br/>Write options.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="writer"/> 或 <paramref name="frames"/> 为空。<br/><paramref name="writer"/> or <paramref name="frames"/> is null.</exception>
+    /// <exception cref="ArgumentException">帧记录无法以 ASC 表示。<br/>A frame record cannot be represented as ASC.</exception>
     public static void Write(TextWriter writer, IEnumerable<VectorAscFrame> frames, VectorAscWriteOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(writer);

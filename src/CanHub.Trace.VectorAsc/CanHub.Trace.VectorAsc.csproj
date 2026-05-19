@@ -19,15 +19,15 @@
 
     <PackageId>CanHub.Trace.VectorAsc</PackageId>
     <Title>CanHub Vector ASC Trace</Title>
-    <Description>Vector ASC trace reader and writer for CanHub CAN/CAN FD frames.</Description>
+    <Description>Hardware-independent Vector ASC trace reader and writer for CanHub CAN/CAN FD frames.</Description>
     <Authors>Eric YaRu YANG</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright (c) CanHub Contributors</Copyright>
-    <PackageTags>can;canfd;vector;asc;trace;automotive;diagnostics</PackageTags>
+    <PackageTags>can;canfd;vector;asc;trace;canoe;canalyzer;automotive;diagnostics</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <!-- Release -->
-    <PackageReleaseNotes>Vector ASC trace reader and writer for CanHub frame models.</PackageReleaseNotes>
+    <PackageReleaseNotes>Hardware-independent Vector ASC trace reader and writer for CanHub frame models.</PackageReleaseNotes>
 
     <!-- URL -->
     <PackageProjectUrl>https://github.com/ThisIsJustNobody/CanHub</PackageProjectUrl>

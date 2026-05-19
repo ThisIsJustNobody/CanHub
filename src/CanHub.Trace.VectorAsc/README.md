@@ -4,7 +4,7 @@
 
 `CanHub.Trace.VectorAsc` reads and writes Vector-style `.asc` CAN/CAN FD trace files for CanHub frame models.
 
-The package is hardware-independent and depends only on `CanHub.Abstractions`.
+The package targets `net10.0`, is hardware-independent, and depends only on `CanHub.Abstractions`.
 
 ## Install
 
@@ -66,7 +66,9 @@ CAN FD output uses a CANoe-style conservative row shape: symbolic names are not 
 - CAN FD data frames with BRS, ESI, DLC, data length, optional symbolic name, and trailing flags diagnostics.
 - Standard and extended identifiers, including Vector's `x` suffix for extended IDs.
 
-Unsupported rows such as LIN, signal values, bus statistics, chip status, and vendor-specific status events are skipped with diagnostics in tolerant mode. Strict mode throws `FormatException` for malformed supported rows.
+Unsupported rows such as LIN, signal values, bus statistics, chip status, and vendor-specific status events are skipped with diagnostics in tolerant mode. Strict mode throws `FormatException` for malformed or unsupported rows.
+
+This package is intended for frame trace exchange. It does not claim to implement every row type accepted by CANoe/CANalyzer, and it does not perform database-backed signal decoding.
 
 ## License
 

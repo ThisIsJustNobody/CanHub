@@ -10,6 +10,8 @@ public static class VectorAscCanHubConversion
     /// 从 CanHub 帧事件创建 ASC 帧记录。<br/>
     /// Creates an ASC frame record from a CanHub frame event.
     /// </summary>
+    /// <param name="frameEvent">CanHub 帧事件。<br/>CanHub frame event.</param>
+    /// <returns>对应的 ASC 帧记录。<br/>Corresponding ASC frame record.</returns>
     public static VectorAscFrame FromFrameEvent(CanFrameEvent frameEvent)
     {
         var timestamp = frameEvent.HasDeviceTimestamp
@@ -42,6 +44,9 @@ public static class VectorAscCanHubConversion
     /// 从 ASC 帧记录创建 CanHub 帧事件。<br/>
     /// Creates a CanHub frame event from an ASC frame record.
     /// </summary>
+    /// <param name="record">ASC 帧记录。<br/>ASC frame record.</param>
+    /// <returns>对应的 CanHub 帧事件。<br/>Corresponding CanHub frame event.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="record"/> 为空。<br/><paramref name="record"/> is null.</exception>
     public static CanFrameEvent ToFrameEvent(VectorAscFrame record)
     {
         ArgumentNullException.ThrowIfNull(record);

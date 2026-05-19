@@ -7,8 +7,8 @@ namespace CanHub.Trace.VectorAsc;
 public sealed class VectorAscReadOptions
 {
     /// <summary>
-    /// 是否启用严格模式。严格模式会在遇到格式错误的受支持行时抛出异常。<br/>
-    /// Whether strict mode is enabled. Strict mode throws for malformed supported rows.
+    /// 是否启用严格模式。严格模式会在遇到格式错误或不支持的行时抛出异常。<br/>
+    /// Whether strict mode is enabled. Strict mode throws for malformed or unsupported rows.
     /// </summary>
     public bool Strict { get; init; }
 

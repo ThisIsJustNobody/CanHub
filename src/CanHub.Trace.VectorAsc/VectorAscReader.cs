@@ -28,6 +28,11 @@ public static class VectorAscReader
     /// 从字符串读取 ASC 内容。<br/>
     /// Reads ASC content from a string.
     /// </summary>
+    /// <param name="text">ASC 文本内容。<br/>ASC text content.</param>
+    /// <param name="options">读取选项。<br/>Read options.</param>
+    /// <returns>已解析的 ASC 文件。<br/>Parsed ASC file.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="text"/> 为空。<br/><paramref name="text"/> is null.</exception>
+    /// <exception cref="FormatException">严格模式下遇到无法解析的行。<br/>Strict mode encountered an unparseable row.</exception>
     public static VectorAscFile ReadText(string text, VectorAscReadOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -39,6 +44,11 @@ public static class VectorAscReader
     /// 从文件读取 ASC 内容。<br/>
     /// Reads ASC content from a file.
     /// </summary>
+    /// <param name="path">ASC 文件路径。<br/>ASC file path.</param>
+    /// <param name="options">读取选项。<br/>Read options.</param>
+    /// <returns>已解析的 ASC 文件。<br/>Parsed ASC file.</returns>
+    /// <exception cref="ArgumentException"><paramref name="path"/> 为空或仅包含空白。<br/><paramref name="path"/> is empty or whitespace.</exception>
+    /// <exception cref="FormatException">严格模式下遇到无法解析的行。<br/>Strict mode encountered an unparseable row.</exception>
     public static VectorAscFile ReadFile(string path, VectorAscReadOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -50,6 +60,11 @@ public static class VectorAscReader
     /// 从文件流式读取 ASC 帧。诊断通过 <see cref="VectorAscReadOptions.DiagnosticSink"/> 上报。<br/>
     /// Streams ASC frames from a file. Diagnostics are reported through <see cref="VectorAscReadOptions.DiagnosticSink"/>.
     /// </summary>
+    /// <param name="path">ASC 文件路径。<br/>ASC file path.</param>
+    /// <param name="options">读取选项。<br/>Read options.</param>
+    /// <returns>逐行解析得到的 ASC 帧记录。<br/>ASC frame records parsed line by line.</returns>
+    /// <exception cref="ArgumentException"><paramref name="path"/> 为空或仅包含空白。<br/><paramref name="path"/> is empty or whitespace.</exception>
+    /// <exception cref="FormatException">严格模式下遇到无法解析的行。<br/>Strict mode encountered an unparseable row.</exception>
     public static IEnumerable<VectorAscFrame> ReadFileFrames(string path, VectorAscReadOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -60,6 +75,11 @@ public static class VectorAscReader
     /// 从文本读取器流式读取 ASC 帧。诊断通过 <see cref="VectorAscReadOptions.DiagnosticSink"/> 上报。<br/>
     /// Streams ASC frames from a text reader. Diagnostics are reported through <see cref="VectorAscReadOptions.DiagnosticSink"/>.
     /// </summary>
+    /// <param name="reader">ASC 文本读取器。<br/>ASC text reader.</param>
+    /// <param name="options">读取选项。<br/>Read options.</param>
+    /// <returns>逐行解析得到的 ASC 帧记录。<br/>ASC frame records parsed line by line.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reader"/> 为空。<br/><paramref name="reader"/> is null.</exception>
+    /// <exception cref="FormatException">严格模式下遇到无法解析的行。<br/>Strict mode encountered an unparseable row.</exception>
     public static IEnumerable<VectorAscFrame> ReadFrames(TextReader reader, VectorAscReadOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -70,6 +90,11 @@ public static class VectorAscReader
     /// 从文本读取器读取 ASC 内容。<br/>
     /// Reads ASC content from a text reader.
     /// </summary>
+    /// <param name="reader">ASC 文本读取器。<br/>ASC text reader.</param>
+    /// <param name="options">读取选项。<br/>Read options.</param>
+    /// <returns>已解析的 ASC 文件。<br/>Parsed ASC file.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reader"/> 为空。<br/><paramref name="reader"/> is null.</exception>
+    /// <exception cref="FormatException">严格模式下遇到无法解析的行。<br/>Strict mode encountered an unparseable row.</exception>
     public static VectorAscFile Read(TextReader reader, VectorAscReadOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
