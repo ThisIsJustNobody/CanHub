@@ -80,6 +80,13 @@ internal sealed class VectorBus : ICanBus
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ct.ThrowIfCancellationRequested();
 
+        if (!_entry.CanSubmitTransmit)
+        {
+            var rejectId = _entry.Hub.AllocateSequence();
+            return ValueTask.FromResult(CanTransmitSubmissionResult.Failed(
+                rejectId, CanTransmitSubmissionStatus.NotStarted));
+        }
+
         if (!frame.IsTransmittable)
         {
             var rejectId = _entry.Hub.AllocateSequence();
@@ -108,7 +115,10 @@ internal sealed class VectorBus : ICanBus
         if (status == XLDefine.XL_Status.XL_SUCCESS)
             return ValueTask.FromResult(CanTransmitSubmissionResult.AcceptedResult(correlationId, (uint)status));
 
-        // 诊断：输出原生错误码
+        PublishTransmitError(
+            correlationId,
+            (uint)status,
+            $"Vector transmit failed: status={status} ({VectorDriver.Driver.XL_GetErrorString(status)}).");
 
         return ValueTask.FromResult(CanTransmitSubmissionResult.Failed(
             correlationId, CanTransmitSubmissionStatus.NativeError, (uint)status));
@@ -180,6 +190,22 @@ internal sealed class VectorBus : ICanBus
         options.Completion == CanTransmitCompletion.SubmitOnly &&
         options.RetryPolicy == default &&
         !options.HighPriority;
+
+    private void PublishTransmitError(
+        ulong correlationId,
+        uint nativeStatusCode,
+        string message)
+    {
+        _entry.HandleFaultStatus(CanStatusEvent.Create(
+            CanStatusKind.Transmit,
+            CanStatusCode.NativeDriverError,
+            CanStatusSeverity.Error,
+            sequence: _entry.Hub.AllocateSequence(),
+            channelIndex: _entry.Key.ChannelIndex,
+            correlationId: correlationId,
+            nativeStatusCode: nativeStatusCode,
+            message: message));
+    }
 
     /// <summary>
     /// 异步释放会话。清理订阅和状态处理器，调用异步释放回调。<br/>

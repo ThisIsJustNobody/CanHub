@@ -67,6 +67,36 @@ public class CanStatusEventTests
         Assert.AreEqual(0x20u, evt.NativeErrorCode);
     }
 
+    [TestMethod(DisplayName = "创建恢复失败状态事件")]
+    public void Create_RecoveryFailed_Status()
+    {
+        var evt = CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.RecoveryFailed,
+            CanStatusSeverity.Error,
+            channelIndex: 1,
+            message: "reopen failed");
+
+        Assert.AreEqual(CanStatusCode.RecoveryFailed, evt.Code);
+        Assert.AreEqual(CanStatusSeverity.Error, evt.Severity);
+        Assert.AreEqual("reopen failed", evt.Message);
+    }
+
+    [TestMethod(DisplayName = "创建恢复跳过状态事件")]
+    public void Create_RecoverySkipped_Status()
+    {
+        var evt = CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.RecoverySkipped,
+            CanStatusSeverity.Warning,
+            channelIndex: 2,
+            message: "recovery is already running");
+
+        Assert.AreEqual(CanStatusCode.RecoverySkipped, evt.Code);
+        Assert.AreEqual(CanStatusSeverity.Warning, evt.Severity);
+        Assert.AreEqual("recovery is already running", evt.Message);
+    }
+
     [TestMethod(DisplayName = "创建原生驱动错误状态事件")]
     public void Create_NativeDriverError_Status()
     {

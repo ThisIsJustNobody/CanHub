@@ -247,6 +247,7 @@ internal sealed class VectorReceiveLoop
                     var errorFrameEvent = VectorFrameConverter.FromXlErrorEvent(
                         ev, _port.LogicalChannelIndex, sequence);
                     _hub.Broadcast(errorFrameEvent);
+                    PublishErrorFrameStatus(errorFrameEvent, "Classic CAN error frame");
                 }
                 else
                 {
@@ -269,7 +270,7 @@ internal sealed class VectorReceiveLoop
 
             case XLDefine.XL_EventTags.XL_CHIP_STATE:
                 var chipState = ev.tagData.chipState;
-                _publishStatus(BuildChipStateStatus(chipState, sequence));
+                _publishStatus(BuildChipStateStatus(chipState, _port.LogicalChannelIndex, sequence));
                 break;
 
             case XLDefine.XL_EventTags.XL_SYNC_PULSE:
@@ -295,7 +296,10 @@ internal sealed class VectorReceiveLoop
         }
     }
 
-    private static CanStatusEvent BuildChipStateStatus(XLClass.xl_chip_state chipState, ulong sequence)
+    private static CanStatusEvent BuildChipStateStatus(
+        XLClass.xl_chip_state chipState,
+        int channelIndex,
+        ulong sequence)
     {
         var busStatus = chipState.busStatus;
         CanStatusCode code;
@@ -325,6 +329,7 @@ internal sealed class VectorReceiveLoop
 
         return CanStatusEvent.Create(
             CanStatusKind.Bus, code, severity, sequence: sequence,
+            channelIndex: channelIndex,
             nativeStatusCode: (uint)chipState.busStatus,
             message: $"Classic CAN chip state: busStatus={chipState.busStatus}, " +
                      $"txErrorCounter={chipState.txErrorCounter}, rxErrorCounter={chipState.rxErrorCounter}.");
@@ -369,6 +374,7 @@ internal sealed class VectorReceiveLoop
                     var errorFrameEvent = VectorFrameConverter.FromCanFdErrorEvent(
                         rxEvent, _port.LogicalChannelIndex, sequence);
                     _hub.Broadcast(errorFrameEvent);
+                    PublishErrorFrameStatus(errorFrameEvent, "CAN FD RX_ERROR");
                 }
                 else
                 {
@@ -416,6 +422,20 @@ internal sealed class VectorReceiveLoop
             channelIndex: _port.LogicalChannelIndex,
             nativeStatusCode: (uint)status,
             message: $"Vector receive failed: status={status}."));
+    }
+
+    private void PublishErrorFrameStatus(CanFrameEvent frameEvent, string message)
+    {
+        _publishStatus(CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.NativeDriverError,
+            CanStatusSeverity.Error,
+            sequence: frameEvent.Sequence,
+            channelIndex: _port.LogicalChannelIndex,
+            relatedFrameSequence: frameEvent.Sequence,
+            nativeStatusCode: frameEvent.NativeStatusCode,
+            nativeErrorCode: frameEvent.NativeErrorCode,
+            message: $"{message}: nativeErrorCode=0x{frameEvent.NativeErrorCode:X}."));
     }
 }
 

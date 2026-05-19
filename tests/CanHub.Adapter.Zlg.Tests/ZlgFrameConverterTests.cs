@@ -114,6 +114,34 @@ public sealed class ZlgFrameConverterTests
         Assert.AreEqual(1, status.ChannelIndex);
     }
 
+    [TestMethod(DisplayName = "Merged bus-off error object maps to BusOff status")]
+    public void BusOffErrorDataObject_MapsToBusOffStatus()
+    {
+        var nativeError = new NativeErrorData
+        {
+            Timestamp = 100,
+            ErrorType = (byte)ZlgErrorType.BusError,
+            ErrorSubType = (byte)ZlgBusErrorSubType.NodeStateChange,
+            NodeState = (byte)ZlgNodeState.BusOff,
+            RxErrorCount = 1,
+            TxErrorCount = 255,
+            ErrorData = 4,
+        };
+        var obj = new NativeDataObject
+        {
+            DataType = (byte)ZlgDataObjectType.Error,
+            Channel = 1,
+        };
+        WriteErrorData(ref obj, nativeError);
+
+        var status = ZlgFrameConverter.ToStatusEvent(obj, sequence: 11);
+
+        Assert.AreEqual(CanStatusKind.Bus, status.Kind);
+        Assert.AreEqual(CanStatusCode.BusOff, status.Code);
+        Assert.AreEqual(CanStatusSeverity.Critical, status.Severity);
+        Assert.AreEqual(1, status.ChannelIndex);
+    }
+
     private static byte[] CopyPayload(CanFrame frame)
     {
         var payload = new byte[frame.Length];

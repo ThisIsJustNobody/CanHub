@@ -49,7 +49,15 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
         ValidateNativeOptions(context.Options.NativeOptions);
         var key = new VectorChannelKey(deviceType, deviceIndex, channelIndex);
         var canonicalLocator = $"vector://{deviceType}?deviceIndex={deviceIndex}&channel={channelIndex}";
-        var fingerprint = LeaseConflictDetector.ComputeFingerprint(context.Endpoint, context.Options, canonicalLocator);
+        var fingerprintOptions = new CanOpenOptions
+        {
+            BusParameters = context.Options.BusParameters,
+            NativeOptions = context.Options.NativeOptions,
+        };
+        var fingerprint = LeaseConflictDetector.ComputeFingerprint(
+            context.Endpoint,
+            fingerprintOptions,
+            canonicalLocator);
 
         await s_channelGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -69,6 +77,7 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
                         $"Configuration conflict for Vector channel '{key}'. Close existing session first.");
                 }
 
+                existing.ConfigureRecovery(context.Options.Recovery);
                 return new VectorBus(existing, ReleaseChannel, ReleaseChannelAsync);
             }
 
@@ -157,8 +166,18 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
 
             var seqGen = new CanSequenceGenerator();
             hub = new FrameBroadcastHub(seqGen);
+            var openSpec = new VectorChannelOpenSpec(context);
             var entry = new VectorChannelLeaseEntry(
-                key, driver, port, hub, fingerprint, isFd, displayName);
+                key,
+                driver,
+                port,
+                hub,
+                fingerprint,
+                isFd,
+                displayName,
+                openSpec,
+                context.Options.Recovery,
+                VectorNativeChannelLifecycle.Instance);
             CheckUnsupportedBusParameters(context.Options.BusParameters, entry.PublishStatus, port.LogicalChannelIndex);
             entry.StartReceiveLoop();
 

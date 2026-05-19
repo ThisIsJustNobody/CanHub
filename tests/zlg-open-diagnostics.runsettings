@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <!-- 启用 ZLG 硬件测试，否则 Hardware 用例会被标记为跳过。 -->
+      <CANHUB_TEST_ZLG>1</CANHUB_TEST_ZLG>
+
+      <!-- 启用 ZLG 打开顺序诊断用例；该用例只打开/关闭通道，不发送报文。 -->
+      <CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS>1</CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS>
+
+      <!-- 重复正反打开顺序的次数。数值越大，越容易复现偶发的驱动/设备状态问题。 -->
+      <CANHUB_TEST_ZLG_OPEN_DIAG_ITERATIONS>10</CANHUB_TEST_ZLG_OPEN_DIAG_ITERATIONS>
+
+      <!--
+        可选：模拟调试模式/官方工具中的操作间隔。
+        CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS 会同时作用于“第一个通道打开后”和“通道关闭后”。
+        如需分别控制，可改用：
+        CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS：打开第一个通道后，打开第二个通道前等待。
+        CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS：每次关闭通道后等待。
+        示例：
+        <CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS>100</CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS>
+      -->
+
+      <!-- 当前实验环境中的两台 USBCANFD_200U 设备索引。 -->
+      <CANHUB_TEST_ZLG_DEVICE0>0</CANHUB_TEST_ZLG_DEVICE0>
+      <CANHUB_TEST_ZLG_DEVICE1>1</CANHUB_TEST_ZLG_DEVICE1>
+
+      <!-- Bus1 是带终端电阻的总线，当前接在两台 ZLG 的 CH0。 -->
+      <CANHUB_TEST_ZLG_BUS1_CHANNEL>0</CANHUB_TEST_ZLG_BUS1_CHANNEL>
+
+      <!-- Bus2 是无终端电阻的总线，当前接在两台 ZLG 的 CH1；本诊断用例暂不打开 Bus2。 -->
+      <CANHUB_TEST_ZLG_BUS2_CHANNEL>1</CANHUB_TEST_ZLG_BUS2_CHANNEL>
+
+      <!-- 扫描深度保持为 2，覆盖设备索引 0 和 1。 -->
+      <CANHUB_TEST_ZLG_SCAN_DEPTH>2</CANHUB_TEST_ZLG_SCAN_DEPTH>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

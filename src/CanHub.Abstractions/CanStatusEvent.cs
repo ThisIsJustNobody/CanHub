@@ -79,6 +79,12 @@ public enum CanStatusCode : ushort
     /// <summary>自动恢复已完成。<br/>Automatic recovery completed.</summary>
     Recovered = 401,
 
+    /// <summary>自动恢复失败。<br/>Automatic recovery failed.</summary>
+    RecoveryFailed = 402,
+
+    /// <summary>自动恢复被跳过。<br/>Automatic recovery was skipped.</summary>
+    RecoverySkipped = 403,
+
     /// <summary>配置参数被忽略，因为适配器不支持。<br/>Configuration parameter was ignored because the adapter does not support it.</summary>
     ConfigurationIgnored = 500,
 }

@@ -8,12 +8,19 @@ namespace CanHub.Adapter.Zlg.Internal;
 /// </summary>
 internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
 {
+    // 实测 USBCANFD_200U 在 ResetCAN/CloseDevice 返回后，驱动内部状态仍可能短暂残留。
+    // 恢复重开时保留一个 ZLG 专属最小等待，避免 restartDelay=0 时撞到 ZCAN_StartCAN Error(0)。
+    private static readonly TimeSpan NativeCloseSettleDelay = TimeSpan.FromMilliseconds(500);
     private readonly List<CanStatusEvent> _pendingDiagnostics = [];
     private readonly object _statusGate = new();
-    private readonly ZlgNonMergedReceiveLoop? _nonMergedLoop;
+    private readonly ZlgChannelOpenSpec _openSpec;
+    private readonly IZlgChannelLifecycle _lifecycle;
+    private ZlgNonMergedReceiveLoop? _nonMergedLoop;
     private event Action<CanStatusEvent>? _statusChanged;
+    private CanRecoveryOptions _recovery;
     private int _referenceCount;
     private int _disposed;
+    private int _recoveryInProgress;
     private nint _channelHandle;
 
     /// <summary>
@@ -28,8 +35,15 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         byte[] fingerprint,
         bool isFd,
         ZlgTransmitType defaultTransmitType,
-        string displayName)
+        string displayName,
+        ZlgChannelOpenSpec openSpec,
+        CanRecoveryOptions recovery,
+        IZlgChannelLifecycle lifecycle)
     {
+        ArgumentNullException.ThrowIfNull(openSpec);
+        ArgumentNullException.ThrowIfNull(recovery);
+        ArgumentNullException.ThrowIfNull(lifecycle);
+
         Key = key;
         Device = device;
         _channelHandle = channelHandle;
@@ -38,8 +52,10 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         IsFd = isFd;
         DefaultTransmitType = defaultTransmitType;
         DisplayName = displayName;
+        _openSpec = openSpec;
+        _recovery = recovery;
+        _lifecycle = lifecycle;
         _referenceCount = 1;
-        _nonMergedLoop = device.MergedReceive ? null : new ZlgNonMergedReceiveLoop(this);
     }
 
     /// <summary>通道键。<br/>Channel key.</summary>
@@ -67,7 +83,19 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     public string DisplayName { get; }
 
     /// <summary>通道是否打开。<br/>Whether the channel is open.</summary>
-    public bool IsOpen => Volatile.Read(ref _disposed) == 0 && ChannelHandle != 0;
+    public bool IsOpen =>
+        Volatile.Read(ref _disposed) == 0 &&
+        ChannelHandle != 0 &&
+        !IsRecovering;
+
+    /// <summary>通道是否正在自动恢复。<br/>Whether the channel is currently recovering.</summary>
+    public bool IsRecovering => Volatile.Read(ref _recoveryInProgress) != 0;
+
+    /// <summary>当前是否允许提交发送。<br/>Whether transmit submission is currently allowed.</summary>
+    public bool CanSubmitTransmit =>
+        Volatile.Read(ref _disposed) == 0 &&
+        ChannelHandle != 0 &&
+        (!IsRecovering || !RejectTransmitsWhileRecovering);
 
     /// <summary>是否正在关闭或已释放。<br/>Whether closing or disposed.</summary>
     public bool IsClosingOrDisposed => Volatile.Read(ref _disposed) != 0;
@@ -125,6 +153,21 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
         return false;
     }
 
+    /// <summary>
+    /// 更新共享通道的恢复策略。非禁用策略会覆盖既有策略，禁用策略不会关闭已启用恢复。<br/>
+    /// Updates the shared channel recovery policy. Non-disabled policies replace the existing one; disabled does not turn off an enabled policy.
+    /// </summary>
+    public void ConfigureRecovery(CanRecoveryOptions recovery)
+    {
+        ArgumentNullException.ThrowIfNull(recovery);
+
+        lock (_statusGate)
+        {
+            if (_recovery == CanRecoveryOptions.Disabled || recovery.Mode != CanRecoveryMode.Disabled)
+                _recovery = recovery;
+        }
+    }
+
     /// <summary>释放一个引用。<br/>Releases a reference.</summary>
     public int ReleaseReference() => Interlocked.Decrement(ref _referenceCount);
 
@@ -138,7 +181,8 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     public void StartReceiveLoop()
     {
         Device.RegisterChannel(this);
-        _nonMergedLoop?.Start();
+        if (!Device.MergedReceive)
+            (_nonMergedLoop ??= new ZlgNonMergedReceiveLoop(this)).Start();
     }
 
     /// <summary>
@@ -192,6 +236,58 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     }
 
     /// <summary>
+    /// 发布故障状态，并在恢复策略匹配时启动自动恢复。<br/>
+    /// Publishes a fault status and starts automatic recovery when the configured policy matches.
+    /// </summary>
+    public void HandleFaultStatus(CanStatusEvent statusEvent)
+    {
+        PublishStatus(statusEvent);
+
+        var trigger = MapRecoveryTrigger(statusEvent);
+        if (trigger == CanRecoveryTrigger.None)
+            return;
+
+        CanRecoveryOptions recovery;
+        lock (_statusGate)
+            recovery = _recovery;
+
+        if (recovery.Mode == CanRecoveryMode.Disabled ||
+            (recovery.Triggers & trigger) == CanRecoveryTrigger.None)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _recoveryInProgress, 1, 0) != 0)
+        {
+            PublishStatus(CanStatusEvent.Create(
+                CanStatusKind.Bus,
+                CanStatusCode.RecoverySkipped,
+                CanStatusSeverity.Warning,
+                sequence: HubAllocateSequence(),
+                channelIndex: Key.ChannelIndex,
+                message: "ZLG recovery is already running."));
+            return;
+        }
+
+        _ = Task.Run(() => RecoverAsync(recovery));
+    }
+
+    /// <summary>
+    /// 处理接收循环原生故障，并按恢复策略决定是否自动恢复。<br/>
+    /// Handles a native receive-loop fault and starts automatic recovery when configured.
+    /// </summary>
+    public void HandleReceiveLoopFault(string message)
+    {
+        HandleFaultStatus(CanStatusEvent.Create(
+            CanStatusKind.Receive,
+            CanStatusCode.NativeDriverError,
+            CanStatusSeverity.Error,
+            sequence: HubAllocateSequence(),
+            channelIndex: Key.ChannelIndex,
+            message: message));
+    }
+
+    /// <summary>
     /// 释放通道。停止非合并接收循环，复位并释放通道句柄。<br/>
     /// Disposes the channel. Stops the non-merged receive loop, resets and releases the channel handle.
     /// </summary>
@@ -202,25 +298,11 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
             return true;
         Interlocked.CompareExchange(ref _disposed, 1, 0);
 
-        if (_nonMergedLoop is not null && !_nonMergedLoop.Stop())
+        if (!StopReceiveLoop())
             return false;
-        Device.UnregisterChannel(Key.ChannelIndex);
 
         var handle = Interlocked.Exchange(ref _channelHandle, 0);
-        if (handle != 0)
-        {
-            var status = ZlgNative.ResetCan(handle);
-            if (status != ZlgStatus.Ok)
-            {
-                PublishStatus(CanStatusEvent.Create(
-                    CanStatusKind.Driver,
-                    CanStatusCode.NativeDriverError,
-                    CanStatusSeverity.Warning,
-                    channelIndex: Key.ChannelIndex,
-                    nativeStatusCode: (uint)status,
-                    message: $"ZLG close operation failed: ZCAN_ResetCAN returned {status}."));
-            }
-        }
+        _lifecycle.CloseChannel(handle, Key.ChannelIndex, PublishStatus);
 
         Hub.Dispose();
         Volatile.Write(ref _disposed, 2);
@@ -235,6 +317,227 @@ internal sealed class ZlgChannelLeaseEntry : IAsyncDisposable
     {
         Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    private async Task RecoverAsync(CanRecoveryOptions recovery)
+    {
+        try
+        {
+            await DelayIfNeededAsync(recovery.FaultDwellTime).ConfigureAwait(false);
+            if (IsClosingOrDisposed)
+                return;
+
+            PublishStatus(CanStatusEvent.Create(
+                CanStatusKind.Bus,
+                CanStatusCode.Recovering,
+                CanStatusSeverity.Warning,
+                sequence: HubAllocateSequence(),
+                channelIndex: Key.ChannelIndex,
+                message: $"ZLG recovery started: {recovery.Mode}."));
+
+            switch (recovery.Mode)
+            {
+                case CanRecoveryMode.CloseOnFault:
+                    CloseAfterFault();
+                    return;
+
+                case CanRecoveryMode.ResetOnFault:
+                    await ReopenOnceAsync(recovery).ConfigureAwait(false);
+                    return;
+
+                case CanRecoveryMode.ReopenWithBackoff:
+                    await ReopenWithBackoffAsync(recovery).ConfigureAwait(false);
+                    return;
+            }
+        }
+        finally
+        {
+            if (ChannelHandle != 0 && !IsClosingOrDisposed)
+                Volatile.Write(ref _recoveryInProgress, 0);
+        }
+    }
+
+    private void CloseAfterFault()
+    {
+        if (CloseChannelForRecovery())
+        {
+            MarkClosing();
+            PublishStatus(CanStatusEvent.Create(
+                CanStatusKind.Channel,
+                CanStatusCode.Disconnected,
+                CanStatusSeverity.Warning,
+                sequence: HubAllocateSequence(),
+                channelIndex: Key.ChannelIndex,
+                message: "ZLG channel closed after bus fault."));
+            return;
+        }
+
+        PublishRecoveryFailed(0, "ZLG channel close failed during CloseOnFault recovery.");
+    }
+
+    private async Task ReopenOnceAsync(CanRecoveryOptions recovery)
+    {
+        if (!CloseChannelForRecovery())
+        {
+            PublishRecoveryFailed(1, "ZLG channel close failed before reset reopen.");
+            return;
+        }
+
+        await DelayIfNeededAsync(EffectiveRestartDelay(recovery.RestartDelay)).ConfigureAwait(false);
+        if (IsClosingOrDisposed)
+            return;
+
+        try
+        {
+            OpenChannelAfterRecovery();
+            PublishRecovered(1);
+        }
+        catch (Exception ex) when (IsRecoveryOpenException(ex))
+        {
+            MarkClosing();
+            PublishRecoveryFailed(1, ex.Message);
+        }
+    }
+
+    private async Task ReopenWithBackoffAsync(CanRecoveryOptions recovery)
+    {
+        if (!CloseChannelForRecovery())
+        {
+            PublishRecoveryFailed(0, "ZLG channel close failed before backoff reopen.");
+            return;
+        }
+
+        var attempts = Math.Max(1, recovery.MaxAttempts);
+        var delay = recovery.RestartDelay;
+        Exception? lastException = null;
+
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            await DelayIfNeededAsync(EffectiveRestartDelay(delay)).ConfigureAwait(false);
+            if (IsClosingOrDisposed)
+                return;
+
+            try
+            {
+                OpenChannelAfterRecovery();
+                PublishRecovered((ulong)attempt);
+                return;
+            }
+            catch (Exception ex) when (IsRecoveryOpenException(ex))
+            {
+                lastException = ex;
+                delay = NextBackoffDelay(delay, recovery.MaxBackoffDelay);
+            }
+        }
+
+        MarkClosing();
+        PublishRecoveryFailed((ulong)attempts, lastException?.Message ?? "ZLG channel reopen failed.");
+    }
+
+    private bool CloseChannelForRecovery()
+    {
+        if (!StopReceiveLoop())
+            return false;
+
+        var handle = Interlocked.Exchange(ref _channelHandle, 0);
+        return _lifecycle.CloseChannel(handle, Key.ChannelIndex, PublishStatus);
+    }
+
+    private void OpenChannelAfterRecovery()
+    {
+        var handle = _lifecycle.OpenChannel(Device, _openSpec);
+        Interlocked.Exchange(ref _channelHandle, handle);
+        StartReceiveLoop();
+    }
+
+    private bool StopReceiveLoop()
+    {
+        if (_nonMergedLoop is not null)
+        {
+            if (!_nonMergedLoop.Stop())
+                return false;
+
+            _nonMergedLoop = null;
+        }
+
+        Device.UnregisterChannel(Key.ChannelIndex);
+        return true;
+    }
+
+    private void PublishRecovered(ulong attemptCount)
+    {
+        if (ChannelHandle != 0 && !IsClosingOrDisposed)
+            Volatile.Write(ref _recoveryInProgress, 0);
+
+        PublishStatus(CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.Recovered,
+            CanStatusSeverity.Info,
+            sequence: HubAllocateSequence(),
+            channelIndex: Key.ChannelIndex,
+            count: attemptCount,
+            message: "ZLG channel reopened after bus fault."));
+    }
+
+    private void PublishRecoveryFailed(ulong attemptCount, string message)
+    {
+        PublishStatus(CanStatusEvent.Create(
+            CanStatusKind.Bus,
+            CanStatusCode.RecoveryFailed,
+            CanStatusSeverity.Error,
+            sequence: HubAllocateSequence(),
+            channelIndex: Key.ChannelIndex,
+            count: attemptCount,
+            message: message));
+    }
+
+    private static CanRecoveryTrigger MapRecoveryTrigger(CanStatusEvent statusEvent)
+    {
+        var trigger = CanRecoveryTrigger.None;
+        var nodeState = (ZlgNodeState)((statusEvent.NativeErrorCode >> 8) & 0xFF);
+
+        if (statusEvent.Code == CanStatusCode.BusOff || nodeState == ZlgNodeState.BusOff)
+            trigger |= CanRecoveryTrigger.BusOff;
+        if (nodeState == ZlgNodeState.Passive)
+            trigger |= CanRecoveryTrigger.ErrorPassive;
+        if (statusEvent.Kind == CanStatusKind.Bus && statusEvent.Code == CanStatusCode.NativeDriverError)
+            trigger |= CanRecoveryTrigger.NativeReceiveFault;
+        if (statusEvent.Kind == CanStatusKind.Receive && statusEvent.Code == CanStatusCode.NativeDriverError)
+            trigger |= CanRecoveryTrigger.NativeReceiveFault;
+        if (statusEvent.Kind == CanStatusKind.Transmit && statusEvent.Code == CanStatusCode.NativeDriverError)
+            trigger |= CanRecoveryTrigger.NativeTransmitFault;
+
+        return trigger;
+    }
+
+    private static bool IsRecoveryOpenException(Exception ex) =>
+        ex is CanException || ex is ObjectDisposedException || ex is ZlgApiException || ZlgExceptionMapper.IsNativeBoundaryException(ex);
+
+    private bool RejectTransmitsWhileRecovering
+    {
+        get
+        {
+            lock (_statusGate)
+                return _recovery.RejectTransmitsWhileRecovering;
+        }
+    }
+
+    private static TimeSpan NextBackoffDelay(TimeSpan current, TimeSpan max)
+    {
+        if (current <= TimeSpan.Zero || max <= TimeSpan.Zero)
+            return TimeSpan.Zero;
+
+        var nextTicks = Math.Min(current.Ticks * 2, max.Ticks);
+        return TimeSpan.FromTicks(nextTicks);
+    }
+
+    private static TimeSpan EffectiveRestartDelay(TimeSpan configuredDelay) =>
+        configuredDelay > NativeCloseSettleDelay ? configuredDelay : NativeCloseSettleDelay;
+
+    private static async Task DelayIfNeededAsync(TimeSpan delay)
+    {
+        if (delay > TimeSpan.Zero)
+            await Task.Delay(delay).ConfigureAwait(false);
     }
 
     private static void InvokeStatusHandler(Action<CanStatusEvent> handler, CanStatusEvent statusEvent)

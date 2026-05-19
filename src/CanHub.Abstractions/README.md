@@ -22,6 +22,7 @@ Target framework: `net10.0`.
 | Lease contracts | `IDeviceLease`, `IChannelLease`, `ExclusivityModel` |
 | Discovery | `CanChannelInfo`, `CanChannelScanResult`, `ScanOptions`, `ScanDiagnostic` |
 | Status and errors | `CanStatusEvent`, `CanStatusKind`, `CanStatusCode`, `CanStatusSeverity`, `CanException`, `CanErrorCategory` |
+| Recovery policy | `CanRecoveryOptions`, `CanRecoveryMode`, `CanRecoveryTrigger` |
 
 ## Frame Model
 
@@ -48,6 +49,10 @@ Use `CopyPayloadTo(Span<byte>)` or `TryCopyPayloadTo` rather than storing mutabl
 ## Transmission Contract
 
 `ICanBus.SendAsync` reports local submission. It does not promise that another node accepted the frame. Bus-level outcomes, receive frames, and faults are emitted as `CanFrameEvent` values, usually with the same `CorrelationId` when the adapter can map the event back to a submission.
+
+## Recovery Policy
+
+Automatic bus recovery is opt-in. `CanOpenOptions.Recovery` defaults to `CanRecoveryOptions.Disabled`, so adapters report faults through `StatusChanged` without closing or reopening the channel unless the caller selects a policy. `ResetOnFault` means one immediate close/reopen using the original open context; `ReopenWithBackoff` uses the same close/reopen mechanism with delay and attempt limits.
 
 ## Adapter Manifests
 

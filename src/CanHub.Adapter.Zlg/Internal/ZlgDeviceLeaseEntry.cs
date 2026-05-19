@@ -135,7 +135,7 @@ internal sealed class ZlgDeviceLeaseEntry : IAsyncDisposable
         entry.BroadcastFrame(frameEvent);
 
         if ((ZlgDataObjectType)obj.DataType == ZlgDataObjectType.Error)
-            entry.PublishStatus(ZlgFrameConverter.ToStatusEvent(obj, sequence));
+            entry.HandleFaultStatus(ZlgFrameConverter.ToStatusEvent(obj, sequence));
     }
 
     /// <summary>
@@ -146,6 +146,16 @@ internal sealed class ZlgDeviceLeaseEntry : IAsyncDisposable
     {
         foreach (var entry in _routes.Values)
             entry.PublishStatus(statusEvent);
+    }
+
+    /// <summary>
+    /// 处理合并接收循环原生故障，并将故障路由到所有已注册通道的恢复协调器。<br/>
+    /// Handles a merged receive-loop native fault and routes it to every registered channel recovery coordinator.
+    /// </summary>
+    public void HandleReceiveLoopFault(string message)
+    {
+        foreach (var entry in _routes.Values)
+            entry.HandleReceiveLoopFault(message);
     }
 
     /// <summary>

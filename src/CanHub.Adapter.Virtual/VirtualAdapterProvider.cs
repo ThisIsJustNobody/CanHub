@@ -47,6 +47,13 @@ public sealed class VirtualAdapterProvider : ICanAdapterProvider
         var channelIndex = context.Endpoint.Channel ?? 0;
 
         var (group, channelState) = VirtualBusStore.AcquireChannel(busName, channelIndex);
+        channelState.ConfigureRecovery(context.Options.Recovery);
+
+        if (context.Options.NativeOptions is VirtualRecoveryOptions virtualOptions &&
+            virtualOptions.FaultInjector is not null)
+        {
+            channelState.RegisterFaultInjector(virtualOptions.FaultInjector);
+        }
 
         var session = new VirtualBusSession(group, channelState, busParams.IsFd);
         return ValueTask.FromResult<ICanBus>(session);
