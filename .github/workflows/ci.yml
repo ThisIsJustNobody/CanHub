@@ -21,6 +21,7 @@ env:
     src/CanHub.Adapter.Virtual/CanHub.Adapter.Virtual.csproj
     src/CanHub.Adapter.Vector/CanHub.Adapter.Vector.csproj
     src/CanHub.Adapter.Zlg/CanHub.Adapter.Zlg.csproj
+    src/CanHub.Trace.VectorAsc/CanHub.Trace.VectorAsc.csproj
   TEST_PROJECTS: |
     tests/CanHub.Abstractions.Tests/CanHub.Abstractions.Tests.csproj
     tests/CanHub.Core.Tests/CanHub.Core.Tests.csproj
@@ -28,6 +29,7 @@ env:
     tests/CanHub.Adapter.Vector.Tests/CanHub.Adapter.Vector.Tests.csproj
     tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj
     tests/CanHub.PackageSmoke.Tests/CanHub.PackageSmoke.Tests.csproj
+    tests/CanHub.Trace.VectorAsc.Tests/CanHub.Trace.VectorAsc.Tests.csproj
 
 jobs:
   restore-build-test-pack:

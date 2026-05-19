@@ -64,6 +64,28 @@ public sealed class PackageSmokeTests
             "runtimes/win-x86/native/kerneldlls/ZPS/ZPSCANFD_IMPL.dll");
     }
 
+    [TestMethod(DisplayName = "Vector ASC trace package can be consumed by a user project")]
+    public async Task VectorAscPackage_CanBeConsumedByUserProject()
+    {
+        var result = await RunFixtureAsync("VectorAscConsumer", "vector-asc-ok", TestContext.CancellationToken);
+
+        StringAssert.Contains(result.StandardOutput, "vector-asc-ok");
+    }
+
+    [TestMethod(DisplayName = "Vector ASC trace nupkg contains library and readmes")]
+    public async Task VectorAscPackage_ContainsExpectedPackageEntries()
+    {
+        var feed = await EnsurePackageFeedAsync(TestContext.CancellationToken);
+
+        AssertPackageContains(
+            feed,
+            "CanHub.Trace.VectorAsc",
+            "README.md",
+            "README.zh-CN.md",
+            "lib/net10.0/CanHub.Trace.VectorAsc.dll",
+            "lib/net10.0/CanHub.Trace.VectorAsc.xml");
+    }
+
     private async Task<CommandResult> RunFixtureAsync(
         string fixtureName,
         string successMarker,
@@ -133,6 +155,7 @@ public sealed class PackageSmokeTests
                 ("CanHub.Adapter.Virtual", ["src", "CanHub.Adapter.Virtual", "CanHub.Adapter.Virtual.csproj"]),
                 ("CanHub.Adapter.Vector", ["src", "CanHub.Adapter.Vector", "CanHub.Adapter.Vector.csproj"]),
                 ("CanHub.Adapter.Zlg", ["src", "CanHub.Adapter.Zlg", "CanHub.Adapter.Zlg.csproj"]),
+                ("CanHub.Trace.VectorAsc", ["src", "CanHub.Trace.VectorAsc", "CanHub.Trace.VectorAsc.csproj"]),
             };
 
             foreach (var (packageId, pathParts) in projectDefs)
@@ -174,6 +197,7 @@ public sealed class PackageSmokeTests
                     $"-p:CanHubAdapterVirtualPackageVersion={projects.Single(p => p.PackageId == "CanHub.Adapter.Virtual").Version}",
                     $"-p:CanHubAdapterVectorPackageVersion={projects.Single(p => p.PackageId == "CanHub.Adapter.Vector").Version}",
                     $"-p:CanHubAdapterZlgPackageVersion={projects.Single(p => p.PackageId == "CanHub.Adapter.Zlg").Version}",
+                    $"-p:CanHubTraceVectorAscPackageVersion={projects.Single(p => p.PackageId == "CanHub.Trace.VectorAsc").Version}",
                 ]);
 
             s_packageFeed = feed;

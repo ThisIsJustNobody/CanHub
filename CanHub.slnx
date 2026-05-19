@@ -5,6 +5,7 @@
     <Project Path="src/CanHub.Adapter.Zlg/CanHub.Adapter.Zlg.csproj" />
     <Project Path="src/CanHub.Adapter.Vector/CanHub.Adapter.Vector.csproj" />
     <Project Path="src/CanHub.Adapter.Virtual/CanHub.Adapter.Virtual.csproj" />
+    <Project Path="src/CanHub.Trace.VectorAsc/CanHub.Trace.VectorAsc.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <File Path="tests/vector-hardware.runsettings" />
@@ -15,5 +16,6 @@
     <Project Path="tests/CanHub.Adapter.Virtual.Tests/CanHub.Adapter.Virtual.Tests.csproj" />
     <Project Path="tests/CanHub.Adapter.Zlg.Tests/CanHub.Adapter.Zlg.Tests.csproj" />
     <Project Path="tests/CanHub.PackageSmoke.Tests/CanHub.PackageSmoke.Tests.csproj" />
+    <Project Path="tests/CanHub.Trace.VectorAsc.Tests/CanHub.Trace.VectorAsc.Tests.csproj" />
   </Folder>
 </Solution>
