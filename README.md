@@ -9,7 +9,7 @@
 
 CanHub is a .NET 10 CAN/CAN FD device abstraction library. It gives application code one stable API for CAN hardware while keeping each vendor driver isolated in its own adapter package.
 
-The current release surface includes the core frame model, registry and DI infrastructure, an in-process virtual adapter, Vector XL Driver support, and ZLG USBCANFD support. Samples and hardware probe utilities are intentionally kept out of the phase-one release surface.
+The current release surface includes the core frame model, registry and DI infrastructure, an in-process virtual adapter, Vector XL Driver support, ZLG USBCANFD support, and Vector ASC trace import/export. Samples and hardware probe utilities are intentionally kept out of the phase-one release surface.
 
 ## Packages
 
@@ -20,6 +20,7 @@ The current release surface includes the core frame model, registry and DI infra
 | [CanHub.Adapter.Virtual](src/CanHub.Adapter.Virtual/README.md) | In-process virtual CAN/CAN FD adapter for tests and local tools | MIT |
 | [CanHub.Adapter.Vector](src/CanHub.Adapter.Vector/README.md) | Vector XL Driver adapter with shared-channel leasing | Apache-2.0 |
 | [CanHub.Adapter.Zlg](src/CanHub.Adapter.Zlg/README.md) | ZLG USBCANFD adapter | Apache-2.0 |
+| [CanHub.Trace.VectorAsc](src/CanHub.Trace.VectorAsc/README.md) | Hardware-independent Vector ASC trace reader/writer | MIT |
 
 Chinese package READMEs are available next to each English README.
 
@@ -32,6 +33,7 @@ dotnet add package CanHub.Core
 dotnet add package CanHub.Adapter.Virtual
 dotnet add package CanHub.Adapter.Vector
 dotnet add package CanHub.Adapter.Zlg
+dotnet add package CanHub.Trace.VectorAsc
 ```
 
 Applications that only define contracts or exchange frames can reference `CanHub.Abstractions` directly.
@@ -70,6 +72,24 @@ zlg://USBCANFD_200U?deviceIndex=0&channel=0
 
 Use `CanHubRegistry.ScanAsync` to discover adapters that support scanning. Hardware adapters may return diagnostics when a driver runtime or device is missing.
 
+## Trace Files
+
+`CanHub.Trace.VectorAsc` can import and export common Vector-style `.asc` CAN trace files:
+
+```csharp
+using CanHub.Trace.VectorAsc;
+
+var trace = VectorAscReader.ReadText(File.ReadAllText("trace.asc"));
+var firstFrame = trace.Frames[0].Frame;
+
+var exported = VectorAscWriter.WriteText(trace.Frames);
+File.WriteAllText("roundtrip.asc", exported);
+```
+
+For large files, use `VectorAscReader.ReadFileFrames(path)` to stream frames line by line.
+
+The first release supports Classic CAN data, remote and error frames, plus CAN FD data frames with BRS/ESI/DLC/data length. LIN, signal decoding, bus statistics, and vendor-specific status rows are skipped with diagnostics by default.
+
 ## Build And Test
 
 ```bash
@@ -99,6 +119,6 @@ $env:CANHUB_TEST_VECTOR_ECU = "1"
 
 ## License
 
-CanHub.Abstractions, CanHub.Core, and CanHub.Adapter.Virtual are licensed under the MIT License.
+CanHub.Abstractions, CanHub.Core, CanHub.Adapter.Virtual, and CanHub.Trace.VectorAsc are licensed under the MIT License.
 
 CanHub.Adapter.Vector and CanHub.Adapter.Zlg are licensed under Apache License 2.0. Their native runtime files may also be subject to the corresponding vendor driver terms. See the adapter package READMEs and third-party notices for details.
