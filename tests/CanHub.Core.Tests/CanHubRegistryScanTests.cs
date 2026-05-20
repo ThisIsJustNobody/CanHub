@@ -36,7 +36,7 @@ public sealed class CanHubRegistryScanTests
         var provider = new FakeAdapterProvider("zlg", "ZLG", new[] { "zlg" },
             supportsScan: true,
             scanResult: new CanChannelScanResult([
-                new CanChannelInfo("zlg", "USBCANFD-200U", 0, 1, null, "zlg://USBCANFD-200U?deviceIndex=0&channel=1",
+                new CanChannelInfo("zlg", "USBCANFD-200U", 0, 1, null, "zlg://USBCANFD-200U?deviceIndex=0&channelIndex=1",
                     CanChannelAvailability.Available)
             ]));
         registry.AddAdapter(provider);
@@ -45,7 +45,7 @@ public sealed class CanHubRegistryScanTests
 
         Assert.HasCount(1, result.Channels);
         Assert.AreEqual("zlg", result.Channels[0].AdapterId);
-        Assert.AreEqual("zlg://USBCANFD-200U?deviceIndex=0&channel=1", result.Channels[0].Endpoint);
+        Assert.AreEqual("zlg://USBCANFD-200U?deviceIndex=0&channelIndex=1", result.Channels[0].Endpoint);
         Assert.IsTrue(provider.ScanCalled);
     }
 
@@ -56,13 +56,13 @@ public sealed class CanHubRegistryScanTests
         registry.AddAdapter(new FakeAdapterProvider("zlg", "ZLG", new[] { "zlg" },
             supportsScan: true,
             scanResult: new CanChannelScanResult([
-                new CanChannelInfo("zlg", "ZLG", 0, 0, null, "zlg://ZLG?deviceIndex=0&channel=0",
+                new CanChannelInfo("zlg", "ZLG", 0, 0, null, "zlg://ZLG?deviceIndex=0&channelIndex=0",
                     CanChannelAvailability.Available)
             ])));
         registry.AddAdapter(new FakeAdapterProvider("vector", "Vector", new[] { "vector" },
             supportsScan: true,
             scanResult: new CanChannelScanResult([
-                new CanChannelInfo("vector", "VN1610", 0, 0, null, "vector://VN1610?deviceIndex=0&channel=0",
+                new CanChannelInfo("vector", "VN1610", 0, 0, null, "vector://VN1610?deviceIndex=0&channelIndex=0",
                     CanChannelAvailability.Available)
             ])));
 
@@ -82,7 +82,7 @@ public sealed class CanHubRegistryScanTests
         registry.AddAdapter(new FakeAdapterProvider("ok", "OK", new[] { "ok" },
             supportsScan: true,
             scanResult: new CanChannelScanResult([
-                new CanChannelInfo("ok", "OK", 0, 0, null, "ok://OK?deviceIndex=0&channel=0",
+                new CanChannelInfo("ok", "OK", 0, 0, null, "ok://OK?deviceIndex=0&channelIndex=0",
                     CanChannelAvailability.Available)
             ])));
 
@@ -95,6 +95,43 @@ public sealed class CanHubRegistryScanTests
         Assert.AreEqual(CanErrorCategory.AdapterError, result.Diagnostics[0].Category);
         StringAssert.Contains(result.Diagnostics[0].Message, nameof(InvalidOperationException));
         StringAssert.Contains(result.Diagnostics[0].Message, "Scan failed");
+    }
+
+    [TestMethod]
+    public async Task ScanAsync_CanExceptionDiagnosticCarriesHintAndDetails()
+    {
+        var registry = CanHubRegistry.CreateDefault();
+        var scanException = new CanException(
+            "zlg",
+            CanErrorCategory.AdapterError,
+            "ZLG native driver is unavailable.",
+            endpoint: CanEndpoint.Parse("zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0"),
+            nativeFunction: "ZCAN_OpenDevice",
+            vendorCode: 0,
+            recoverability: CanRecoverability.Retryable,
+            hint: "确认 ZLG 驱动已安装，且 native DLL 可被当前进程加载。",
+            details: new Dictionary<string, string>
+            {
+                ["deviceIndex"] = "0",
+                ["channelIndex"] = "0",
+                ["nativeDllPath"] = "C:\\Drivers\\zlgcan.dll",
+            });
+        registry.AddAdapter(new FakeAdapterProvider("zlg", "ZLG", new[] { "zlg" },
+            supportsScan: true,
+            scanException: scanException));
+
+        var result = await registry.ScanAsync();
+
+        Assert.IsEmpty(result.Channels);
+        Assert.HasCount(1, result.Diagnostics);
+        var diagnostic = result.Diagnostics[0];
+        Assert.AreEqual("zlg", diagnostic.AdapterId);
+        Assert.AreEqual(CanErrorCategory.AdapterError, diagnostic.Category);
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=0&deviceIndex=0", diagnostic.Endpoint);
+        Assert.AreEqual("确认 ZLG 驱动已安装，且 native DLL 可被当前进程加载。", diagnostic.Hint);
+        Assert.AreEqual("0", diagnostic.Details["deviceIndex"]);
+        Assert.AreEqual("0", diagnostic.Details["channelIndex"]);
+        Assert.AreEqual("C:\\Drivers\\zlgcan.dll", diagnostic.Details["nativeDllPath"]);
     }
 
     [TestMethod]
@@ -119,13 +156,14 @@ public sealed class CanHubRegistryScanTests
         var provider = new FakeAdapterProvider("vector", "Vector", new[] { "vector" });
         registry.AddAdapter(provider);
         var channel = new CanChannelInfo("vector", "VN5610A", 0, 2, 5,
-            "vector://VN5610A?deviceIndex=0&channel=2", CanChannelAvailability.Active);
+            "vector://VN5610A?deviceIndex=0&channelIndex=2", CanChannelAvailability.Active);
 
         await using var bus = await registry.OpenAsync(channel, new CanOpenOptions(), CancellationToken.None);
 
         Assert.AreEqual("Vector", bus.DisplayName);
         Assert.IsNotNull(provider.LastOpenContext);
         Assert.AreEqual("VN5610A", provider.LastOpenContext.Endpoint.Device);
+        Assert.AreEqual(2, provider.LastOpenContext.Endpoint.ChannelIndex);
         Assert.AreEqual(2, provider.LastOpenContext.Endpoint.Channel);
     }
 
@@ -154,13 +192,15 @@ public sealed class CanHubRegistryScanTests
         private readonly CanChannelScanResult? _scanResult;
         private readonly bool _throwOnScan;
         private readonly bool _throwOnCancellation;
+        private readonly CanException? _scanException;
 
         public FakeAdapterProvider(
             string adapterId, string displayName, string[] schemes,
             bool supportsScan = false,
             CanChannelScanResult? scanResult = null,
             bool throwOnScan = false,
-            bool throwOnCancellation = false)
+            bool throwOnCancellation = false,
+            CanException? scanException = null)
         {
             AdapterId = adapterId;
             DisplayName = displayName;
@@ -169,6 +209,7 @@ public sealed class CanHubRegistryScanTests
             _scanResult = scanResult;
             _throwOnScan = throwOnScan;
             _throwOnCancellation = throwOnCancellation;
+            _scanException = scanException;
         }
 
         public ValueTask<ICanBus> OpenAsync(CanOpenContext context, CancellationToken ct = default)
@@ -183,6 +224,8 @@ public sealed class CanHubRegistryScanTests
             ScanCalled = true;
             if (_throwOnCancellation)
                 ct.ThrowIfCancellationRequested();
+            if (_scanException is not null)
+                throw _scanException;
             if (_throwOnScan)
                 throw new InvalidOperationException("Scan failed");
             return ValueTask.FromResult(_scanResult ?? new CanChannelScanResult());

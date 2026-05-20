@@ -12,6 +12,21 @@ public sealed class CanChannelInfo
     /// <summary>设备显示名称。<br/>Device display name.</summary>
     public string DeviceName { get; }
 
+    /// <summary>面向用户界面的通道显示名称。<br/>User-facing channel display name.</summary>
+    public string DisplayName { get; }
+
+    /// <summary>稳定通道标识。优先使用规范端点。<br/>Stable channel identifier. Prefers the canonical endpoint.</summary>
+    public string ChannelId { get; }
+
+    /// <summary>厂商名称（如有）。<br/>Vendor name (if any).</summary>
+    public string? VendorName { get; }
+
+    /// <summary>硬件标识（如有）。<br/>Hardware identifier (if any).</summary>
+    public string? HardwareId { get; }
+
+    /// <summary>设备序列号（如有）。<br/>Device serial number (if any).</summary>
+    public string? SerialNumber { get; }
+
     /// <summary>设备索引（逻辑编号）。<br/>Device index (logical number).</summary>
     public int DeviceIndex { get; }
 
@@ -23,6 +38,12 @@ public sealed class CanChannelInfo
 
     /// <summary>用于打开此通道的端点 URI（如有）。<br/>Endpoint URI for opening this channel (if any).</summary>
     public string? Endpoint { get; }
+
+    /// <summary>规范化端点 URI（如有）。<br/>Canonical endpoint URI (if any).</summary>
+    public string? CanonicalEndpoint { get; }
+
+    /// <summary>推荐的默认总线参数（如有）。<br/>Recommended default bus parameters (if any).</summary>
+    public CanBusParameters? RecommendedBusParameters { get; }
 
     /// <summary>通道可用性状态。<br/>Channel availability status.</summary>
     public CanChannelAvailability Availability { get; }
@@ -46,7 +67,14 @@ public sealed class CanChannelInfo
         string? endpoint,
         CanChannelAvailability availability,
         IReadOnlyList<CanCapability>? capabilities = null,
-        ScanDiagnostic? diagnostic = null)
+        ScanDiagnostic? diagnostic = null,
+        string? channelId = null,
+        string? displayName = null,
+        string? vendorName = null,
+        string? hardwareId = null,
+        string? serialNumber = null,
+        string? canonicalEndpoint = null,
+        CanBusParameters? recommendedBusParameters = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
         ArgumentException.ThrowIfNullOrWhiteSpace(deviceName);
@@ -57,10 +85,23 @@ public sealed class CanChannelInfo
 
         AdapterId = adapterId;
         DeviceName = deviceName;
+        VendorName = string.IsNullOrWhiteSpace(vendorName) ? null : vendorName;
+        HardwareId = string.IsNullOrWhiteSpace(hardwareId) ? null : hardwareId;
+        SerialNumber = string.IsNullOrWhiteSpace(serialNumber) ? null : serialNumber;
         DeviceIndex = deviceIndex;
         ChannelIndex = channelIndex;
         NativeChannelIndex = nativeChannelIndex;
         Endpoint = string.IsNullOrWhiteSpace(endpoint) ? null : endpoint;
+        CanonicalEndpoint = string.IsNullOrWhiteSpace(canonicalEndpoint)
+            ? TryCanonicalizeEndpoint(Endpoint)
+            : canonicalEndpoint;
+        DisplayName = string.IsNullOrWhiteSpace(displayName)
+            ? $"{deviceName} Channel {channelIndex}"
+            : displayName;
+        ChannelId = string.IsNullOrWhiteSpace(channelId)
+            ? CanonicalEndpoint ?? $"{adapterId}:{deviceName}:{deviceIndex}:{channelIndex}"
+            : channelId;
+        RecommendedBusParameters = recommendedBusParameters;
         Availability = availability;
         Capabilities = capabilities is not null
             ? Array.AsReadOnly(capabilities.ToArray())
@@ -69,5 +110,20 @@ public sealed class CanChannelInfo
         CanOpen = Endpoint is not null
             && availability is not CanChannelAvailability.Unsupported
             && availability is not CanChannelAvailability.Error;
+    }
+
+    private static string? TryCanonicalizeEndpoint(string? endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            return null;
+
+        try
+        {
+            return CanEndpoint.Parse(endpoint).ToString();
+        }
+        catch (CanException)
+        {
+            return endpoint;
+        }
     }
 }

@@ -10,14 +10,27 @@ public class CanEndpointTests
     [TestMethod(DisplayName = "解析虚拟端点正确提取各字段")]
     public void Parse_VirtualEndpoint_ParsesSchemeDeviceChannelAndParameters()
     {
-        var ep = CanEndpoint.Parse("virtual://bench?channel=0&fd=true&bitrate=500000");
+        var ep = CanEndpoint.Parse("virtual://bench?channelIndex=0&fd=true&bitrate=500000");
 
         Assert.AreEqual("virtual", ep.Scheme);
         Assert.AreEqual("bench", ep.Device);
         Assert.AreEqual(0, ep.Channel);
+        Assert.AreEqual(0, ep.ChannelIndex);
         Assert.HasCount(2, ep.Parameters);
+        Assert.IsFalse(ep.Parameters.ContainsKey("channel"));
+        Assert.IsFalse(ep.Parameters.ContainsKey("channelIndex"));
         Assert.AreEqual("true", ep.Parameters["fd"]);
         Assert.AreEqual("500000", ep.Parameters["bitrate"]);
+    }
+
+    [TestMethod(DisplayName = "旧channel参数作为channelIndex别名解析")]
+    public void Parse_LegacyChannelAlias_ParsesAsChannelIndex()
+    {
+        var ep = CanEndpoint.Parse("virtual://bench?channel=2");
+
+        Assert.AreEqual(2, ep.ChannelIndex);
+        Assert.AreEqual(2, ep.Channel);
+        Assert.IsFalse(ep.Parameters.ContainsKey("channel"));
     }
 
     [TestMethod(DisplayName = "无通道时参数不含channel")]
@@ -121,6 +134,18 @@ public class CanEndpointTests
     public void Parse_NonIntegerChannel_ThrowsCanException()
     {
         TestAssert.Throws<CanException>(() => CanEndpoint.Parse("virtual://bench?channel=abc"));
+    }
+
+    [TestMethod(DisplayName = "channelIndex为负数抛出CanException")]
+    public void Parse_NegativeChannelIndex_ThrowsCanException()
+    {
+        TestAssert.Throws<CanException>(() => CanEndpoint.Parse("virtual://bench?channelIndex=-1"));
+    }
+
+    [TestMethod(DisplayName = "channel与channelIndex冲突抛出CanException")]
+    public void Parse_ChannelAndChannelIndexConflict_ThrowsCanException()
+    {
+        TestAssert.Throws<CanException>(() => CanEndpoint.Parse("virtual://bench?channel=1&channelIndex=2"));
     }
 
     [TestMethod(DisplayName = "重复查询参数抛出CanException")]
@@ -277,10 +302,11 @@ public class CanEndpointTests
         var ep = CanEndpoint.Parse(original);
         var output = ep.ToString();
 
+        Assert.AreEqual("virtual://bench?channelIndex=0&bitrate=500000&fd=true", output);
         var reparsed = CanEndpoint.Parse(output);
         Assert.AreEqual(ep.Scheme, reparsed.Scheme);
         Assert.AreEqual(ep.Device, reparsed.Device);
-        Assert.AreEqual(ep.Channel, reparsed.Channel);
+        Assert.AreEqual(ep.ChannelIndex, reparsed.ChannelIndex);
         Assert.AreEqual(ep.Parameters.Count, reparsed.Parameters.Count);
         foreach (var p in ep.Parameters)
             Assert.AreEqual(p.Value, reparsed.Parameters[p.Key]);
@@ -298,7 +324,7 @@ public class CanEndpointTests
     {
         var ep = CanEndpoint.Parse("virtual://bench?channel=0&zebra=a&alpha=b");
         var output = ep.ToString();
-        Assert.AreEqual("virtual://bench?channel=0&alpha=b&zebra=a", output);
+        Assert.AreEqual("virtual://bench?channelIndex=0&alpha=b&zebra=a", output);
     }
 
     #endregion

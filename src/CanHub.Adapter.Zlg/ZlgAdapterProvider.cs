@@ -46,76 +46,83 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var capabilities = ZlgDeviceTypeMap.Resolve(context.Endpoint.Device);
-        var deviceIndex = GetParameterInt(context.Endpoint, "deviceIndex", 0);
-        var channelIndex = GetChannelIndex(context.Endpoint);
-        var resolved = ZlgResolvedOpenOptions.Create(
-            capabilities,
-            context.Options.BusParameters,
-            context.Options.NativeOptions);
-        var key = new ZlgChannelKey(capabilities.DeviceTypeId, deviceIndex, channelIndex);
-        var canonicalLocator = $"zlg://{capabilities.EndpointName}?deviceIndex={deviceIndex}&channel={channelIndex}";
-        var fingerprintOptions = new CanOpenOptions
-        {
-            BusParameters = context.Options.BusParameters,
-            NativeOptions = resolved,
-        };
-        var fingerprint = LeaseConflictDetector.ComputeFingerprint(
-            context.Endpoint,
-            fingerprintOptions,
-            canonicalLocator);
-
-        await s_gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (s_channels.TryGetValue(key, out var existing))
+            var capabilities = ZlgDeviceTypeMap.Resolve(context.Endpoint.Device);
+            var deviceIndex = GetParameterInt(context.Endpoint, "deviceIndex", 0);
+            var channelIndex = context.Endpoint.ChannelIndex ?? 0;
+            var resolved = ZlgResolvedOpenOptions.Create(
+                capabilities,
+                context.Options.BusParameters,
+                context.Options.NativeOptions);
+            var key = new ZlgChannelKey(capabilities.DeviceTypeId, deviceIndex, channelIndex);
+            var canonicalLocator = $"zlg://{capabilities.EndpointName}?deviceIndex={deviceIndex}&channelIndex={channelIndex}";
+            var fingerprintOptions = new CanOpenOptions
             {
-                if (!existing.TryAddReference())
-                {
-                    throw new CanException("zlg", CanErrorCategory.AdapterError,
-                        $"ZLG channel '{key}' is still closing after a receive-loop stop timeout. Restart the process or reset the device before reopening it.");
-                }
+                BusParameters = context.Options.BusParameters,
+                NativeOptions = resolved,
+            };
+            var fingerprint = LeaseConflictDetector.ComputeFingerprint(
+                context.Endpoint,
+                fingerprintOptions,
+                canonicalLocator);
 
-                if (!LeaseConflictDetector.FingerprintsMatch(existing.Fingerprint, fingerprint))
-                {
-                    existing.ReleaseReference();
-                    throw new CanException("zlg", CanErrorCategory.ConfigurationConflict,
-                        $"Configuration conflict for ZLG channel '{key}'. Close existing session first.");
-                }
-
-                existing.ConfigureRecovery(context.Options.Recovery);
-                return new ZlgBus(existing, ReleaseChannel, ReleaseChannelAsync);
-            }
-
-            ZlgDeviceLeaseEntry? device = null;
-            var createdDevice = false;
+            await s_gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                device = GetOrOpenDevice(key.DeviceKey, capabilities, resolved.UseMergedReceive, out createdDevice);
-                var entry = CreateChannelEntry(key, device, fingerprint, resolved, context);
-                s_channels[key] = entry;
-                return new ZlgBus(entry, ReleaseChannel, ReleaseChannelAsync);
-            }
-            catch (Exception ex)
-            {
-                if (createdDevice && device is not null)
+                if (s_channels.TryGetValue(key, out var existing))
                 {
-                    s_devices.TryRemove(key.DeviceKey, out _);
-                    await device.DisposeAsync().ConfigureAwait(false);
+                    if (!existing.TryAddReference())
+                    {
+                        throw new CanException("zlg", CanErrorCategory.AdapterError,
+                            $"ZLG channel '{key}' is still closing after a receive-loop stop timeout. Restart the process or reset the device before reopening it.");
+                    }
+
+                    if (!LeaseConflictDetector.FingerprintsMatch(existing.Fingerprint, fingerprint))
+                    {
+                        existing.ReleaseReference();
+                        throw new CanException("zlg", CanErrorCategory.ConfigurationConflict,
+                            $"Configuration conflict for ZLG channel '{key}'. Close existing session first.");
+                    }
+
+                    existing.ConfigureRecovery(context.Options.Recovery);
+                    return new ZlgBus(existing, ReleaseChannel, ReleaseChannelAsync);
                 }
 
-                if (ex is CanException)
+                ZlgDeviceLeaseEntry? device = null;
+                var createdDevice = false;
+                try
+                {
+                    device = GetOrOpenDevice(key.DeviceKey, capabilities, resolved.UseMergedReceive, out createdDevice);
+                    var entry = CreateChannelEntry(key, device, fingerprint, resolved, context);
+                    s_channels[key] = entry;
+                    return new ZlgBus(entry, ReleaseChannel, ReleaseChannelAsync);
+                }
+                catch (Exception ex)
+                {
+                    if (createdDevice && device is not null)
+                    {
+                        s_devices.TryRemove(key.DeviceKey, out _);
+                        await device.DisposeAsync().ConfigureAwait(false);
+                    }
+
+                    if (ex is CanException)
+                        throw;
+
+                    if (ZlgExceptionMapper.IsNativeBoundaryException(ex))
+                        throw ZlgExceptionMapper.ToCanException(ex, context);
+
                     throw;
-
-                if (ZlgExceptionMapper.IsNativeBoundaryException(ex))
-                    throw ZlgExceptionMapper.ToCanException(ex);
-
-                throw;
+                }
+            }
+            finally
+            {
+                s_gate.Release();
             }
         }
-        finally
+        catch (CanException ex)
         {
-            s_gate.Release();
+            throw ZlgExceptionMapper.EnrichOpenException(ex, context);
         }
     }
 
@@ -371,7 +378,7 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
             deviceIndex,
             channelIndex,
             nativeChannelIndex: channelIndex,
-            endpoint: $"zlg://{capabilities.EndpointName}?deviceIndex={deviceIndex}&channel={channelIndex}",
+            endpoint: $"zlg://{capabilities.EndpointName}?deviceIndex={deviceIndex}&channelIndex={channelIndex}",
             availability: CanChannelAvailability.Available,
             capabilities:
             [
@@ -380,7 +387,12 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
                 new CanCapability("iso-can-fd", false),
                 new CanCapability("merged-receive", false),
                 new CanCapability("internal-termination", false),
-            ]);
+            ],
+            vendorName: "ZLG",
+            hardwareId: $"{capabilities.EndpointName}:{deviceIndex}",
+            serialNumber: string.IsNullOrWhiteSpace(info.SerialNumber) ? null : info.SerialNumber,
+            displayName: $"ZLG {capabilities.EndpointName} #{deviceIndex} CH{channelIndex}",
+            recommendedBusParameters: CanBusParameters.Classic500k);
     }
 
     private static int GetParameterInt(CanEndpoint endpoint, string key, int defaultValue)
@@ -389,24 +401,6 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
             return ParseNonNegativeInt(endpoint, key, value);
 
         return defaultValue;
-    }
-
-    private static int GetChannelIndex(CanEndpoint endpoint)
-    {
-        var channel = endpoint.Channel;
-        int? legacyChannel = null;
-        if (endpoint.Parameters.TryGetValue("channelIndex", out var legacyValue))
-            legacyChannel = ParseNonNegativeInt(endpoint, "channelIndex", legacyValue);
-
-        if (channel.HasValue && legacyChannel.HasValue && channel.Value != legacyChannel.Value)
-        {
-            throw new CanException(
-                "zlg",
-                CanErrorCategory.InvalidEndpoint,
-                $"Endpoint channel and channelIndex conflict: channel={channel.Value}, channelIndex={legacyChannel.Value}.");
-        }
-
-        return channel ?? legacyChannel ?? 0;
     }
 
     private static int ParseNonNegativeInt(CanEndpoint endpoint, string key, string value)

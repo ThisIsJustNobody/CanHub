@@ -24,6 +24,12 @@ public sealed class ScanDiagnostic
     /// <summary>关联的端点（如有）。<br/>Associated endpoint (if any).</summary>
     public string? Endpoint { get; }
 
+    /// <summary>面向排障的人类可读提示（如有）。<br/>Human-readable troubleshooting hint (if any).</summary>
+    public string? Hint { get; }
+
+    /// <summary>结构化诊断详情。<br/>Structured diagnostic details.</summary>
+    public IReadOnlyDictionary<string, string> Details { get; }
+
     /// <summary>创建扫描诊断记录。<br/>Creates a scan diagnostic record.</summary>
     public ScanDiagnostic(
         CanErrorCategory category,
@@ -31,7 +37,9 @@ public sealed class ScanDiagnostic
         int? nativeErrorCode = null,
         CanRecoverability recoverability = CanRecoverability.Fatal,
         string adapterId = "*",
-        string? endpoint = null)
+        string? endpoint = null,
+        string? hint = null,
+        IReadOnlyDictionary<string, string>? details = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
@@ -41,5 +49,9 @@ public sealed class ScanDiagnostic
         NativeErrorCode = nativeErrorCode;
         Recoverability = recoverability;
         Endpoint = string.IsNullOrWhiteSpace(endpoint) ? null : endpoint;
+        Hint = string.IsNullOrWhiteSpace(hint) ? null : hint;
+        Details = details is null || details.Count == 0
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(details, StringComparer.Ordinal);
     }
 }

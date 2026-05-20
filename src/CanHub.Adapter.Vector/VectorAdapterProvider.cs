@@ -43,66 +43,73 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var deviceType = VectorDeviceTypeMapper.Resolve(context.Endpoint.Device);
-        var deviceIndex = GetParameterInt(context.Endpoint, "deviceIndex", 0);
-        var channelIndex = GetChannelIndex(context.Endpoint);
-        ValidateNativeOptions(context.Options.NativeOptions);
-        var key = new VectorChannelKey(deviceType, deviceIndex, channelIndex);
-        var canonicalLocator = $"vector://{deviceType}?deviceIndex={deviceIndex}&channel={channelIndex}";
-        var fingerprintOptions = new CanOpenOptions
-        {
-            BusParameters = context.Options.BusParameters,
-            NativeOptions = context.Options.NativeOptions,
-        };
-        var fingerprint = LeaseConflictDetector.ComputeFingerprint(
-            context.Endpoint,
-            fingerprintOptions,
-            canonicalLocator);
-
-        await s_channelGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (s_channels.TryGetValue(key, out var existing))
+            var deviceType = VectorDeviceTypeMapper.Resolve(context.Endpoint.Device);
+            var deviceIndex = GetParameterInt(context.Endpoint, "deviceIndex", 0);
+            var channelIndex = context.Endpoint.ChannelIndex ?? 0;
+            ValidateNativeOptions(context.Options.NativeOptions);
+            var key = new VectorChannelKey(deviceType, deviceIndex, channelIndex);
+            var canonicalLocator = $"vector://{deviceType}?deviceIndex={deviceIndex}&channelIndex={channelIndex}";
+            var fingerprintOptions = new CanOpenOptions
             {
-                if (!existing.TryAddReference())
-                {
-                    throw new CanException("vector", CanErrorCategory.AdapterError,
-                        $"Vector channel '{key}' is still closing after a receive-loop stop timeout. Restart the process or reset the device before reopening it.");
-                }
+                BusParameters = context.Options.BusParameters,
+                NativeOptions = context.Options.NativeOptions,
+            };
+            var fingerprint = LeaseConflictDetector.ComputeFingerprint(
+                context.Endpoint,
+                fingerprintOptions,
+                canonicalLocator);
 
-                if (!LeaseConflictDetector.FingerprintsMatch(existing.Fingerprint, fingerprint))
-                {
-                    existing.ReleaseReference();
-                    throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
-                        $"Configuration conflict for Vector channel '{key}'. Close existing session first.");
-                }
-
-                existing.ConfigureRecovery(context.Options.Recovery);
-                return new VectorBus(existing, ReleaseChannel, ReleaseChannelAsync);
-            }
-
-            var driver = s_driver;
-            await driver.AcquireAsync();
-
+            await s_channelGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var isFd = context.Options.BusParameters.IsFd;
-                var displayName = $"Vector {context.Endpoint.Device} Channel {channelIndex}";
-                var entry = await CreateChannelEntryAsync(
-                    key, driver, fingerprint, isFd, displayName, context, ct);
+                if (s_channels.TryGetValue(key, out var existing))
+                {
+                    if (!existing.TryAddReference())
+                    {
+                        throw new CanException("vector", CanErrorCategory.AdapterError,
+                            $"Vector channel '{key}' is still closing after a receive-loop stop timeout. Restart the process or reset the device before reopening it.");
+                    }
 
-                s_channels[key] = entry;
-                return new VectorBus(entry, ReleaseChannel, ReleaseChannelAsync);
+                    if (!LeaseConflictDetector.FingerprintsMatch(existing.Fingerprint, fingerprint))
+                    {
+                        existing.ReleaseReference();
+                        throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
+                            $"Configuration conflict for Vector channel '{key}'. Close existing session first.");
+                    }
+
+                    existing.ConfigureRecovery(context.Options.Recovery);
+                    return new VectorBus(existing, ReleaseChannel, ReleaseChannelAsync);
+                }
+
+                var driver = s_driver;
+                await driver.AcquireAsync();
+
+                try
+                {
+                    var isFd = context.Options.BusParameters.IsFd;
+                    var displayName = $"Vector {context.Endpoint.Device} Channel {channelIndex}";
+                    var entry = await CreateChannelEntryAsync(
+                        key, driver, fingerprint, isFd, displayName, context, ct);
+
+                    s_channels[key] = entry;
+                    return new VectorBus(entry, ReleaseChannel, ReleaseChannelAsync);
+                }
+                catch
+                {
+                    await driver.ReleaseAsync();
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                await driver.ReleaseAsync();
-                throw;
+                s_channelGate.Release();
             }
         }
-        finally
+        catch (CanException ex)
         {
-            s_channelGate.Release();
+            throw EnrichOpenException(ex, context);
         }
     }
 
@@ -250,24 +257,6 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
         return defaultValue;
     }
 
-    private static int GetChannelIndex(CanEndpoint endpoint)
-    {
-        var channel = endpoint.Channel;
-        int? legacyChannel = null;
-        if (endpoint.Parameters.TryGetValue("channelIndex", out var legacyValue))
-            legacyChannel = ParseNonNegativeInt(endpoint, "channelIndex", legacyValue);
-
-        if (channel.HasValue && legacyChannel.HasValue && channel.Value != legacyChannel.Value)
-        {
-            throw new CanException(
-                "vector",
-                CanErrorCategory.InvalidEndpoint,
-                $"Endpoint channel and channelIndex conflict: channel={channel.Value}, channelIndex={legacyChannel.Value}.");
-        }
-
-        return channel ?? legacyChannel ?? 0;
-    }
-
     private static int ParseNonNegativeInt(CanEndpoint endpoint, string key, string value)
     {
         if (!int.TryParse(value, out var result) || result < 0)
@@ -289,6 +278,49 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
 
         throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
             $"Vector adapter NativeOptions must be {nameof(VectorOpenOptions)} when specified.");
+    }
+
+    private static CanException EnrichOpenException(CanException ex, CanOpenContext context)
+    {
+        var details = BuildOpenDetails(context);
+        foreach (var detail in ex.Details)
+            details[detail.Key] = detail.Value;
+        if (!string.IsNullOrWhiteSpace(ex.NativeFunction))
+            details["nativeFunction"] = ex.NativeFunction;
+        if (ex.VendorCode.HasValue)
+            details["vendorCode"] = ex.VendorCode.Value.ToString();
+
+        return new CanException(
+            ex.AdapterId,
+            ex.Category,
+            ex.Message,
+            ex,
+            ex.Endpoint ?? context.Endpoint,
+            ex.NativeFunction,
+            ex.VendorCode,
+            ex.Recoverability,
+            ex.Hint ?? "检查 Vector 驱动是否已安装、设备是否被占用、设备索引/通道索引是否存在，以及总线参数是否被其他会话占用。",
+            details);
+    }
+
+    private static Dictionary<string, string> BuildOpenDetails(CanOpenContext context)
+    {
+        var bp = context.Options.BusParameters;
+        var details = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["endpoint"] = context.Endpoint.ToString(),
+            ["device"] = context.Endpoint.Device,
+            ["deviceIndex"] = context.Endpoint.Parameters.TryGetValue("deviceIndex", out var deviceIndex)
+                ? deviceIndex
+                : "0",
+            ["channelIndex"] = (context.Endpoint.ChannelIndex ?? 0).ToString(),
+            ["arbitrationBitrate"] = bp.ArbitrationBitrate.ToString(),
+            ["isFd"] = bp.IsFd.ToString(),
+        };
+        if (bp.DataBitrate.HasValue)
+            details["dataBitrate"] = bp.DataBitrate.Value.ToString();
+
+        return details;
     }
 
     /// <summary>

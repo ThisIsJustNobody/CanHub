@@ -40,8 +40,8 @@ public static class LeaseConflictDetector
         ArgumentNullException.ThrowIfNull(options);
         options.BusParameters.Validate();
 
-        // (1) 定位信息：scheme + device + channel（不受旧总线 query 参数影响）
-        var locator = canonicalLocator ?? $"{endpoint.Scheme}://{endpoint.Device}?channel={endpoint.Channel ?? 0}";
+        // (1) 定位信息：scheme + device + channelIndex（不受旧总线 query 参数影响）
+        var locator = canonicalLocator ?? $"{endpoint.Scheme}://{endpoint.Device}?channelIndex={endpoint.ChannelIndex ?? 0}";
         var locatorBytes = Encoding.UTF8.GetBytes(locator);
         var hash1 = SHA256.HashData(locatorBytes);
 

@@ -45,7 +45,7 @@ var registry = CanHubRegistry.CreateDefault()
 
 ```csharp
 await using var bus = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 

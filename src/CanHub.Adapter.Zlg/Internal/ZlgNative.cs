@@ -309,6 +309,7 @@ public sealed class ZlgApiException : Exception
     {
         NativeFunction = nativeFunction;
         Status = status;
+        Detail = detail;
     }
 
     /// <summary>失败的原生函数名。<br/>The failing native function name.</summary>
@@ -316,4 +317,7 @@ public sealed class ZlgApiException : Exception
 
     /// <summary>ZLG 状态码。<br/>The ZLG status code.</summary>
     public ZlgStatus Status { get; }
+
+    /// <summary>原生调用附加详情。<br/>Additional native call detail.</summary>
+    public string? Detail { get; }
 }

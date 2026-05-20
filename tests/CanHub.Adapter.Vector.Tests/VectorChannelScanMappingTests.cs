@@ -27,7 +27,12 @@ public sealed class VectorChannelScanMappingTests
         Assert.AreEqual(0, channel.DeviceIndex);
         Assert.AreEqual(2, channel.ChannelIndex);
         Assert.AreEqual(5, channel.NativeChannelIndex);
-        Assert.AreEqual("vector://VN5610A?deviceIndex=0&channel=2", channel.Endpoint);
+        Assert.AreEqual("vector://VN5610A?deviceIndex=0&channelIndex=2", channel.Endpoint);
+        Assert.AreEqual("vector://VN5610A?channelIndex=2&deviceIndex=0", channel.CanonicalEndpoint);
+        Assert.AreEqual("Vector", channel.VendorName);
+        Assert.AreEqual("VN5610A:0", channel.HardwareId);
+        Assert.AreEqual("Vector VN5610A #0 CH2", channel.DisplayName);
+        Assert.AreEqual(CanBusParameters.Classic500k, channel.RecommendedBusParameters);
         Assert.AreEqual(CanChannelAvailability.Available, channel.Availability);
         Assert.IsTrue(channel.CanOpen);
         Assert.IsTrue(channel.Capabilities.Any(c => c.Name == "classic-can"));
@@ -53,7 +58,7 @@ public sealed class VectorChannelScanMappingTests
         Assert.AreEqual("VN1630", channel.DeviceName);
         Assert.AreEqual(1, channel.DeviceIndex);
         Assert.AreEqual(CanChannelAvailability.Active, channel.Availability);
-        Assert.AreEqual("vector://VN1630?deviceIndex=1&channel=0", channel.Endpoint);
+        Assert.AreEqual("vector://VN1630?deviceIndex=1&channelIndex=0", channel.Endpoint);
         Assert.IsTrue(channel.CanOpen);
     }
 

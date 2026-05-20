@@ -23,6 +23,9 @@ public sealed class CanChannelInfoTests
         Assert.AreEqual(2, channel.ChannelIndex);
         Assert.AreEqual(5, channel.NativeChannelIndex);
         Assert.AreEqual("vector://VN5610A?deviceIndex=0&channel=2", channel.Endpoint);
+        Assert.AreEqual("vector://VN5610A?channelIndex=2&deviceIndex=0", channel.CanonicalEndpoint);
+        Assert.AreEqual("vector://VN5610A?channelIndex=2&deviceIndex=0", channel.ChannelId);
+        Assert.AreEqual("VN5610A Channel 2", channel.DisplayName);
         Assert.AreEqual(CanChannelAvailability.Available, channel.Availability);
         Assert.IsTrue(channel.CanOpen);
         Assert.HasCount(1, channel.Capabilities);
@@ -179,5 +182,33 @@ public sealed class CanChannelInfoTests
 
         Assert.AreEqual("classic-can", channel.Capabilities[0].Name);
         Assert.IsNotInstanceOfType<CanCapability[]>(channel.Capabilities);
+    }
+
+    [TestMethod]
+    public void Constructor_WithUiMetadata_SetsMetadataProperties()
+    {
+        var recommended = CanBusParameters.Fd500k2M;
+
+        var channel = new CanChannelInfo(
+            adapterId: "zlg",
+            deviceName: "USBCANFD_200U",
+            deviceIndex: 1,
+            channelIndex: 0,
+            nativeChannelIndex: 0,
+            endpoint: "zlg://USBCANFD_200U?deviceIndex=1&channelIndex=0",
+            availability: CanChannelAvailability.Available,
+            vendorName: "ZLG",
+            hardwareId: "USBCANFD_200U:1",
+            serialNumber: "ABC123",
+            displayName: "ZLG USBCANFD_200U #1 CH0",
+            channelId: "zlg:USBCANFD_200U:1:0",
+            recommendedBusParameters: recommended);
+
+        Assert.AreEqual("ZLG", channel.VendorName);
+        Assert.AreEqual("USBCANFD_200U:1", channel.HardwareId);
+        Assert.AreEqual("ABC123", channel.SerialNumber);
+        Assert.AreEqual("ZLG USBCANFD_200U #1 CH0", channel.DisplayName);
+        Assert.AreEqual("zlg:USBCANFD_200U:1:0", channel.ChannelId);
+        Assert.AreSame(recommended, channel.RecommendedBusParameters);
     }
 }

@@ -63,9 +63,16 @@ public sealed class ScanDiagnosticTests
         var diag = new ScanDiagnostic(
             CanErrorCategory.InvalidEndpoint,
             "Bad URI",
-            endpoint: "virtual://bad");
+            endpoint: "virtual://bad",
+            hint: "Use channelIndex",
+            details: new Dictionary<string, string>
+            {
+                ["parameter"] = "channelIndex",
+            });
 
         Assert.AreEqual("virtual://bad", diag.Endpoint);
+        Assert.AreEqual("Use channelIndex", diag.Hint);
+        Assert.AreEqual("channelIndex", diag.Details["parameter"]);
     }
 
     [TestMethod]

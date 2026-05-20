@@ -58,6 +58,12 @@ public sealed class VectorRegistrationTests
             async () => await provider.OpenAsync(context, TestContext.CancellationToken));
 
         Assert.AreEqual(CanErrorCategory.ConfigurationConflict, ex.Category);
+        Assert.AreEqual("vector://VN1630?channelIndex=0", ex.Endpoint?.ToString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(ex.Hint));
+        Assert.AreEqual("VN1630", ex.Details["device"]);
+        Assert.AreEqual("0", ex.Details["deviceIndex"]);
+        Assert.AreEqual("0", ex.Details["channelIndex"]);
+        Assert.AreEqual("500000", ex.Details["arbitrationBitrate"]);
     }
 
     [TestMethod(DisplayName = "Vector拒绝非法deviceIndex")]
@@ -119,10 +125,13 @@ public sealed class VectorRegistrationTests
     private async Task AssertInvalidEndpointAsync(string endpoint)
     {
         var provider = new VectorAdapterProvider();
-        var context = new CanOpenContext(CanEndpoint.Parse(endpoint), new CanOpenOptions());
 
         var ex = await Assert.ThrowsExactlyAsync<CanException>(
-            async () => await provider.OpenAsync(context, TestContext.CancellationToken));
+            async () =>
+            {
+                var context = new CanOpenContext(CanEndpoint.Parse(endpoint), new CanOpenOptions());
+                await provider.OpenAsync(context, TestContext.CancellationToken);
+            });
 
         Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
     }

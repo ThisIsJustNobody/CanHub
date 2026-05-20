@@ -44,7 +44,7 @@ public sealed class VirtualAdapterProvider : ICanAdapterProvider
 
         var busParams = context.Options.BusParameters;
         var busName = context.Endpoint.Device;
-        var channelIndex = context.Endpoint.Channel ?? 0;
+        var channelIndex = context.Endpoint.ChannelIndex ?? 0;
 
         var (group, channelState) = VirtualBusStore.AcquireChannel(busName, channelIndex);
         channelState.ConfigureRecovery(context.Options.Recovery);

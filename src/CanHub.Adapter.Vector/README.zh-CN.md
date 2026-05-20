@@ -26,17 +26,17 @@ var registry = CanHubRegistry.CreateDefault()
 ## 端点格式
 
 ```text
-vector://{deviceName}?deviceIndex={index}&channel={channelIndex}
+vector://{deviceName}?deviceIndex={index}&channelIndex={channelIndex}
 ```
 
 示例：
 
 ```text
-vector://VN1630A?deviceIndex=0&channel=0
-vector://VN1640A?deviceIndex=0&channel=1&appName=CanHub
+vector://VN1630A?deviceIndex=0&channelIndex=0
+vector://VN1640A?deviceIndex=0&channelIndex=1&appName=CanHub
 ```
 
-适配器也接受 `channelIndex` 作为 `channel` 的别名。设备名称和通道编号以 Vector XL Driver 暴露的信息为准。
+适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备名称和通道编号以 Vector XL Driver 暴露的信息为准。
 
 ## 使用示例
 
@@ -44,7 +44,7 @@ vector://VN1640A?deviceIndex=0&channel=1&appName=CanHub
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "vector://VN1630A?deviceIndex=0&channel=0",
+    "vector://VN1630A?deviceIndex=0&channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```
@@ -59,7 +59,7 @@ Vector 自动恢复通过 `CanOpenOptions.Recovery` 显式开启。默认值是 
 
 ```csharp
 await using var bus = await registry.OpenAsync(
-    "vector://VN5610A?deviceIndex=0&channel=2",
+    "vector://VN5610A?deviceIndex=0&channelIndex=2",
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,

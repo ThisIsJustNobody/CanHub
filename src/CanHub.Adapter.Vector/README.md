@@ -26,17 +26,17 @@ var registry = CanHubRegistry.CreateDefault()
 ## Endpoint Format
 
 ```text
-vector://{deviceName}?deviceIndex={index}&channel={channelIndex}
+vector://{deviceName}?deviceIndex={index}&channelIndex={channelIndex}
 ```
 
 Examples:
 
 ```text
-vector://VN1630A?deviceIndex=0&channel=0
-vector://VN1640A?deviceIndex=0&channel=1&appName=CanHub
+vector://VN1630A?deviceIndex=0&channelIndex=0
+vector://VN1640A?deviceIndex=0&channelIndex=1&appName=CanHub
 ```
 
-The adapter also accepts `channelIndex` as an alias for `channel`. Device names and channel numbering follow the information exposed by the Vector XL Driver.
+The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device names and channel numbering follow the information exposed by the Vector XL Driver.
 
 ## Usage
 
@@ -44,7 +44,7 @@ The adapter also accepts `channelIndex` as an alias for `channel`. Device names 
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "vector://VN1630A?deviceIndex=0&channel=0",
+    "vector://VN1630A?deviceIndex=0&channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```
@@ -59,7 +59,7 @@ When enabled, the adapter reuses the original open configuration, stops the rece
 
 ```csharp
 await using var bus = await registry.OpenAsync(
-    "vector://VN5610A?deviceIndex=0&channel=2",
+    "vector://VN5610A?deviceIndex=0&channelIndex=2",
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,

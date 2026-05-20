@@ -24,29 +24,29 @@ var registry = CanHubRegistry.CreateDefault()
 ## 端点格式
 
 ```text
-virtual://{busName}?channel={channelIndex}
+virtual://{busName}?channelIndex={channelIndex}
 ```
 
 示例：
 
 ```text
-virtual://demo?channel=0
-virtual://demo?channel=1
-virtual://isolated-test?channel=0
+virtual://demo?channelIndex=0
+virtual://demo?channelIndex=1
+virtual://isolated-test?channelIndex=0
 ```
 
-使用相同总线名的端点会共享同一个进程内虚拟总线。需要隔离测试时请使用不同总线名。总线名区分大小写。
+使用相同总线名的端点会共享同一个进程内虚拟总线。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。需要隔离测试时请使用不同总线名。总线名区分大小写。
 
 ## 使用示例
 
 ```csharp
 await using var tx = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
 await using var rx = await registry.OpenAsync(
-    "virtual://demo?channel=1",
+    "virtual://demo?channelIndex=1",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
@@ -69,7 +69,7 @@ await tx.SendAsync(
 var injector = new VirtualFaultInjector();
 
 await using var bus = await registry.OpenAsync(
-    "virtual://recovery?channel=0",
+    "virtual://recovery?channelIndex=0",
     new CanOpenOptions
     {
         Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),

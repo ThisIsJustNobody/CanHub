@@ -101,6 +101,12 @@ public sealed class ZlgRegistrationTests
             async () => await provider.OpenAsync(context, TestContext.CancellationToken));
 
         Assert.AreEqual(CanErrorCategory.ConfigurationConflict, ex.Category);
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=0&deviceIndex=0", ex.Endpoint?.ToString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(ex.Hint));
+        Assert.AreEqual("USBCANFD_200U", ex.Details["device"]);
+        Assert.AreEqual("0", ex.Details["deviceIndex"]);
+        Assert.AreEqual("0", ex.Details["channelIndex"]);
+        Assert.AreEqual("500000", ex.Details["arbitrationBitrate"]);
     }
 
     [TestMethod(DisplayName = "ZLG rejects unsupported device before touching native driver")]
@@ -115,6 +121,11 @@ public sealed class ZlgRegistrationTests
             async () => await provider.OpenAsync(context, TestContext.CancellationToken));
 
         Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+        Assert.AreEqual("zlg://USBCANFD_400U?channelIndex=0&deviceIndex=0", ex.Endpoint?.ToString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(ex.Hint));
+        Assert.AreEqual("USBCANFD_400U", ex.Details["device"]);
+        Assert.AreEqual("0", ex.Details["deviceIndex"]);
+        Assert.AreEqual("0", ex.Details["channelIndex"]);
     }
 
     [TestMethod(DisplayName = "ZLG rejects invalid deviceIndex")]
@@ -140,10 +151,13 @@ public sealed class ZlgRegistrationTests
     private async Task AssertInvalidEndpointAsync(string endpoint)
     {
         var provider = new ZlgAdapterProvider();
-        var context = new CanOpenContext(CanEndpoint.Parse(endpoint), new CanOpenOptions());
 
         var ex = await Assert.ThrowsExactlyAsync<CanException>(
-            async () => await provider.OpenAsync(context, TestContext.CancellationToken));
+            async () =>
+            {
+                var context = new CanOpenContext(CanEndpoint.Parse(endpoint), new CanOpenOptions());
+                await provider.OpenAsync(context, TestContext.CancellationToken);
+            });
 
         Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
     }

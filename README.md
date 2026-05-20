@@ -48,7 +48,7 @@ var registry = CanHubRegistry.CreateDefault()
     .AddVirtualAdapter();
 
 await using var bus = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
@@ -65,9 +65,9 @@ Console.WriteLine($"Submitted: {result.CorrelationId}");
 Adapters own their endpoint scheme and query parameters:
 
 ```text
-virtual://demo?channel=0
-vector://VN1630A?deviceIndex=0&channel=0
-zlg://USBCANFD_200U?deviceIndex=0&channel=0
+virtual://demo?channelIndex=0
+vector://VN1630A?deviceIndex=0&channelIndex=0
+zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
 Use `CanHubRegistry.ScanAsync` to discover adapters that support scanning. Hardware adapters may return diagnostics when a driver runtime or device is missing.
