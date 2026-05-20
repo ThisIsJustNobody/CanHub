@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Virtual.svg)](https://www.nuget.org/packages/CanHub.Adapter.Virtual)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Adapter.Virtual` provides an in-process CAN/CAN FD adapter for tests, demos, and local tooling. It requires no hardware or native driver and is useful for validating application logic before connecting real devices.
 
 ## Install
@@ -24,29 +28,29 @@ var registry = CanHubRegistry.CreateDefault()
 ## Endpoint Format
 
 ```text
-virtual://{busName}?channel={channelIndex}
+virtual://{busName}?channelIndex={channelIndex}
 ```
 
 Examples:
 
 ```text
-virtual://demo?channel=0
-virtual://demo?channel=1
-virtual://isolated-test?channel=0
+virtual://demo?channelIndex=0
+virtual://demo?channelIndex=1
+virtual://isolated-test?channelIndex=0
 ```
 
-Endpoints with the same bus name share the same in-process virtual bus. Use different bus names to isolate tests. Bus names are case-sensitive.
+Endpoints with the same bus name share the same in-process virtual bus. The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Use different bus names to isolate tests. Bus names are case-sensitive.
 
 ## Usage
 
 ```csharp
 await using var tx = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
 await using var rx = await registry.OpenAsync(
-    "virtual://demo?channel=1",
+    "virtual://demo?channelIndex=1",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
@@ -69,7 +73,7 @@ For recovery tests, pass a `VirtualRecoveryOptions` instance through `CanOpenOpt
 var injector = new VirtualFaultInjector();
 
 await using var bus = await registry.OpenAsync(
-    "virtual://recovery?channel=0",
+    "virtual://recovery?channelIndex=0",
     new CanOpenOptions
     {
         Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),

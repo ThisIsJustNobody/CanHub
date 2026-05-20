@@ -7,6 +7,30 @@ public class CanExceptionTests
 {
     #region Basic Construction
 
+    [TestMethod(DisplayName = "旧版公共构造函数签名仍保留")]
+    public void PublicConstructors_LegacySignatures_ArePreserved()
+    {
+        Assert.IsNotNull(typeof(CanException).GetConstructor([
+            typeof(string),
+            typeof(CanErrorCategory),
+            typeof(CanEndpoint),
+            typeof(string),
+            typeof(int?),
+            typeof(CanRecoverability),
+        ]));
+        Assert.IsNotNull(typeof(CanException).GetConstructor([
+            typeof(string),
+            typeof(CanErrorCategory),
+            typeof(string),
+        ]));
+        Assert.IsNotNull(typeof(CanException).GetConstructor([
+            typeof(string),
+            typeof(CanErrorCategory),
+            typeof(string),
+            typeof(Exception),
+        ]));
+    }
+
     [TestMethod(DisplayName = "构造函数设置适配器ID和类别属性")]
     public void Constructor_AdapterIdAndCategory_SetsProperties()
     {
@@ -48,7 +72,12 @@ public class CanExceptionTests
             endpoint: null,
             nativeFunction: "SendFrame",
             vendorCode: 0x0042,
-            recoverability: CanRecoverability.Retryable);
+            recoverability: CanRecoverability.Retryable,
+            hint: "Check driver",
+            details: new Dictionary<string, string>
+            {
+                ["endpoint"] = "vector://VN1630?deviceIndex=0&channelIndex=1",
+            });
 
         Assert.AreEqual("adapter-2", ex.AdapterId);
         Assert.AreEqual(CanErrorCategory.AdapterError, ex.Category);
@@ -56,6 +85,8 @@ public class CanExceptionTests
         Assert.AreEqual("SendFrame", ex.NativeFunction);
         Assert.AreEqual(0x0042, ex.VendorCode);
         Assert.AreEqual(CanRecoverability.Retryable, ex.Recoverability);
+        Assert.AreEqual("Check driver", ex.Hint);
+        Assert.AreEqual("vector://VN1630?deviceIndex=0&channelIndex=1", ex.Details["endpoint"]);
     }
 
     [TestMethod(DisplayName = "可选参数为null时正常接受")]

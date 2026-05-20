@@ -79,6 +79,19 @@ public sealed class LeaseConflictDetectorTests
         Assert.IsFalse(LeaseConflictDetector.FingerprintsMatch(fp1, fp2));
     }
 
+    [TestMethod(DisplayName = "channel 与 channelIndex 兼容写法指纹相同")]
+    public void ComputeFingerprint_ChannelAndChannelIndexAliases_SameFingerprint()
+    {
+        var ep1 = CanEndpoint.Parse("vector://VN1630A?channel=0");
+        var ep2 = CanEndpoint.Parse("vector://VN1630A?channelIndex=0");
+        var opts = new CanOpenOptions();
+
+        var fp1 = LeaseConflictDetector.ComputeFingerprint(ep1, opts);
+        var fp2 = LeaseConflictDetector.ComputeFingerprint(ep2, opts);
+
+        Assert.IsTrue(LeaseConflictDetector.FingerprintsMatch(fp1, fp2));
+    }
+
     [TestMethod(DisplayName = "null NativeOptions 与 非null NativeOptions 指纹不同")]
     public void ComputeFingerprint_NullVsNonNullNativeOptions_Different()
     {

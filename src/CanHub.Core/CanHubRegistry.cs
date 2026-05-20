@@ -166,7 +166,9 @@ public sealed class CanHubRegistry
                     ex.VendorCode,
                     ex.Recoverability,
                     provider.AdapterId,
-                    ex.Endpoint?.ToString()));
+                    ex.Endpoint?.ToString(),
+                    ex.Hint,
+                    ex.Details));
             }
             catch (Exception ex)
             {
@@ -188,7 +190,7 @@ public sealed class CanHubRegistry
     /// 委托至 <see cref="OpenAsync(string, CanOpenOptions, CancellationToken)"/>，使用默认 <see cref="CanOpenOptions"/>。<br/>
     /// Delegates to <see cref="OpenAsync(string, CanOpenOptions, CancellationToken)"/> with default <see cref="CanOpenOptions"/>.
     /// </remarks>
-    /// <param name="endpoint">端点 URI（格式：scheme://device?channel=N）。<br/>The endpoint URI (format: scheme://device?channel=N).</param>
+    /// <param name="endpoint">端点 URI（推荐格式：scheme://device?channelIndex=N，兼容旧 channel 参数）。<br/>The endpoint URI (recommended format: scheme://device?channelIndex=N, with legacy channel compatibility).</param>
     /// <param name="ct">取消令牌。<br/>The cancellation token.</param>
     /// <returns>打开的 CAN 总线句柄。<br/>The opened CAN bus handle.</returns>
     public ValueTask<ICanBus> OpenAsync(
@@ -223,9 +225,23 @@ public sealed class CanHubRegistry
 
         if (!channel.CanOpen || string.IsNullOrWhiteSpace(channel.Endpoint))
         {
-            var message = channel.Diagnostic?.Message
-                ?? $"Scanned channel '{channel.DeviceName}[{channel.DeviceIndex}] channel {channel.ChannelIndex}' cannot be opened.";
-            throw new CanException(channel.AdapterId, CanErrorCategory.InvalidEndpoint, message);
+            if (channel.Diagnostic is { } diagnostic)
+            {
+                throw new CanException(
+                    channel.AdapterId,
+                    diagnostic.Category,
+                    diagnostic.Message,
+                    endpoint: TryParseEndpoint(diagnostic.Endpoint),
+                    vendorCode: diagnostic.NativeErrorCode,
+                    recoverability: diagnostic.Recoverability,
+                    hint: diagnostic.Hint,
+                    details: diagnostic.Details);
+            }
+
+            throw new CanException(
+                channel.AdapterId,
+                CanErrorCategory.InvalidEndpoint,
+                $"Scanned channel '{channel.DeviceName}[{channel.DeviceIndex}] channel {channel.ChannelIndex}' cannot be opened.");
         }
 
         return OpenAsync(channel.Endpoint, options, ct);
@@ -239,7 +255,7 @@ public sealed class CanHubRegistry
     /// 解析端点 URI 提取 scheme，查找对应的适配器提供者，然后委托打开。未找到适配器时抛出 <see cref="CanException"/>（<see cref="CanErrorCategory.AdapterNotFound"/>）。<br/>
     /// Parses the endpoint URI to extract the scheme, looks up the matching adapter provider, then delegates opening. Throws <see cref="CanException"/> (<see cref="CanErrorCategory.AdapterNotFound"/>) if no adapter matches.
     /// </remarks>
-    /// <param name="endpoint">端点 URI（格式：scheme://device?channel=N）。<br/>The endpoint URI (format: scheme://device?channel=N).</param>
+    /// <param name="endpoint">端点 URI（推荐格式：scheme://device?channelIndex=N，兼容旧 channel 参数）。<br/>The endpoint URI (recommended format: scheme://device?channelIndex=N, with legacy channel compatibility).</param>
     /// <param name="options">打开选项（BusParameters 默认 Classic500k）。<br/>Open options (BusParameters defaults to Classic500k).</param>
     /// <param name="ct">取消令牌。<br/>The cancellation token.</param>
     /// <returns>打开的 CAN 总线句柄。<br/>The opened CAN bus handle.</returns>
@@ -253,5 +269,20 @@ public sealed class CanHubRegistry
 
         var context = new CanOpenContext(parsed, options);
         return provider.OpenAsync(context, ct);
+    }
+
+    private static CanEndpoint? TryParseEndpoint(string? endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            return null;
+
+        try
+        {
+            return CanEndpoint.Parse(endpoint);
+        }
+        catch (CanException)
+        {
+            return null;
+        }
     }
 }

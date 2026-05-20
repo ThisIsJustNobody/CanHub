@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Abstractions.svg)](https://www.nuget.org/packages/CanHub.Abstractions)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Abstractions` contains the dependency-free contracts shared by every CanHub package. Reference it when a library needs to exchange CAN/CAN FD frames, describe device capabilities, or define adapter-facing interfaces without depending on DI, Core, or vendor runtimes.
 
 ## Install

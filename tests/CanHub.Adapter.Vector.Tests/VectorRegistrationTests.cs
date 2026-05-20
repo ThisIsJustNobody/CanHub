@@ -46,6 +46,20 @@ public sealed class VectorRegistrationTests
         Assert.IsFalse(LeaseConflictDetector.FingerprintsMatch(fp1, fp2));
     }
 
+    [TestMethod(DisplayName = "Vector scan driver failure includes hint and details")]
+    public void ScanDriverFailureDiagnostic_IncludesHintAndDetails()
+    {
+        var diagnostic = VectorAdapterProvider.CreateDriverConfigFailureDiagnostic(
+            XLDefine.XL_Status.XL_ERR_QUEUE_IS_EMPTY);
+
+        Assert.AreEqual("vector", diagnostic.AdapterId);
+        Assert.AreEqual(CanErrorCategory.AdapterError, diagnostic.Category);
+        Assert.AreEqual((int)XLDefine.XL_Status.XL_ERR_QUEUE_IS_EMPTY, diagnostic.NativeErrorCode);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(diagnostic.Hint));
+        Assert.AreEqual("XL_GetDriverConfig", diagnostic.Details["nativeFunction"]);
+        Assert.AreEqual(((int)XLDefine.XL_Status.XL_ERR_QUEUE_IS_EMPTY).ToString(), diagnostic.Details["vendorCode"]);
+    }
+
     [TestMethod(DisplayName = "Vector拒绝未知NativeOptions类型")]
     public async Task OpenAsync_UnknownNativeOptions_ThrowsConfigurationConflict()
     {
@@ -58,6 +72,12 @@ public sealed class VectorRegistrationTests
             async () => await provider.OpenAsync(context, TestContext.CancellationToken));
 
         Assert.AreEqual(CanErrorCategory.ConfigurationConflict, ex.Category);
+        Assert.AreEqual("vector://VN1630?channelIndex=0", ex.Endpoint?.ToString());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(ex.Hint));
+        Assert.AreEqual("VN1630", ex.Details["device"]);
+        Assert.AreEqual("0", ex.Details["deviceIndex"]);
+        Assert.AreEqual("0", ex.Details["channelIndex"]);
+        Assert.AreEqual("500000", ex.Details["arbitrationBitrate"]);
     }
 
     [TestMethod(DisplayName = "Vector拒绝非法deviceIndex")]
@@ -119,10 +139,13 @@ public sealed class VectorRegistrationTests
     private async Task AssertInvalidEndpointAsync(string endpoint)
     {
         var provider = new VectorAdapterProvider();
-        var context = new CanOpenContext(CanEndpoint.Parse(endpoint), new CanOpenOptions());
 
         var ex = await Assert.ThrowsExactlyAsync<CanException>(
-            async () => await provider.OpenAsync(context, TestContext.CancellationToken));
+            async () =>
+            {
+                var context = new CanOpenContext(CanEndpoint.Parse(endpoint), new CanOpenOptions());
+                await provider.OpenAsync(context, TestContext.CancellationToken);
+            });
 
         Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
     }

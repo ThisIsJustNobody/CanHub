@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Zlg.svg)](https://www.nuget.org/packages/CanHub.Adapter.Zlg)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-orange.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE-APACHE-2.0)
+
 `CanHub.Adapter.Zlg` connects CanHub to ZLG USBCANFD devices through the ZLG CAN runtime. It provides endpoint parsing, native asset loading, bus lifecycle management, CAN/CAN FD transmission, and hardware diagnostics.
 
 ## Install
@@ -26,16 +30,16 @@ var registry = CanHubRegistry.CreateDefault()
 ## Endpoint Format
 
 ```text
-zlg://{deviceType}?deviceIndex={index}&channel={channelIndex}
+zlg://{deviceType}?deviceIndex={index}&channelIndex={channelIndex}
 ```
 
 Example:
 
 ```text
-zlg://USBCANFD_200U?deviceIndex=0&channel=0
+zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
-The first supported device family is `USBCANFD_200U`. Device index and channel numbering follow the ZLG runtime.
+The first supported device family is `USBCANFD_200U`. The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device index and channel numbering follow the ZLG runtime.
 
 ## Usage
 
@@ -43,7 +47,7 @@ The first supported device family is `USBCANFD_200U`. Device index and channel n
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channel=0",
+    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```
@@ -58,7 +62,7 @@ When enabled, the adapter reuses the original open configuration and performs ch
 
 ```csharp
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channel=0",
+    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,
@@ -94,7 +98,7 @@ Vector interop hardware tests additionally require `CANHUB_TEST_VECTOR=1`. By de
 
 ZLG open-order diagnostics additionally require `CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS=1`. This diagnostic only opens and closes the two ZLG devices on Bus1 without transmitting frames; set `CANHUB_TEST_ZLG_OPEN_DIAG_ITERATIONS` to change the repeat count when investigating whether simultaneously opened device channels affect each other.
 
-When direct runs fail but debugger runs pass, use `CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS` to add an operation delay that simulates debugger pacing. For finer control, `CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS` waits after opening the first channel and before opening the second channel, while `CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS` waits after each channel close. In this hardware round, before the `StartCAN` retry was added, open-order diagnostics after bus-error injection could still reproduce `ZCAN_StartCAN Error (0)` for `deviceIndex=1&channel=0` with 500ms, 2000ms, and even 5000ms post-close delays. After adding the `StartCAN` retry, both the unpaced diagnostic and the 2000ms post-close paced diagnostic passed. This diagnostic covers repeated manual close/open cycles across different ZLG devices, so it is recorded separately from the automatic same-channel recovery path.
+When direct runs fail but debugger runs pass, use `CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS` to add an operation delay that simulates debugger pacing. For finer control, `CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS` waits after opening the first channel and before opening the second channel, while `CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS` waits after each channel close. In this hardware round, before the `StartCAN` retry was added, open-order diagnostics after bus-error injection could still reproduce `ZCAN_StartCAN Error (0)` for `deviceIndex=1&channelIndex=0` with 500ms, 2000ms, and even 5000ms post-close delays. After adding the `StartCAN` retry, both the unpaced diagnostic and the 2000ms post-close paced diagnostic passed. This diagnostic covers repeated manual close/open cycles across different ZLG devices, so it is recorded separately from the automatic same-channel recovery path.
 
 You can also use the checked-in diagnostics settings file instead of setting environment variables manually:
 

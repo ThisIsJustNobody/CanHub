@@ -5,6 +5,7 @@ using System.Xml.Linq;
 namespace CanHub.PackageSmoke.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public sealed class PackageSmokeTests
 {
     private const string NuGetOrg = "https://api.nuget.org/v3/index.json";

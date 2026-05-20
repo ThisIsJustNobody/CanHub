@@ -33,6 +33,21 @@ public sealed class ZlgNativeContractTests
         Assert.IsInstanceOfType<DllNotFoundException>(missingDll.InnerException);
     }
 
+    [TestMethod(DisplayName = "Native scan diagnostics carry mapped hint and details")]
+    public void NativeExceptionMapper_MapsToScanDiagnostic()
+    {
+        var diagnostic = ZlgExceptionMapper.ToScanDiagnostic(
+            new ZlgApiException("ZCAN_GetDeviceInf", ZlgStatus.Error, "deviceIndex=1"));
+
+        Assert.AreEqual("zlg", diagnostic.AdapterId);
+        Assert.AreEqual(CanErrorCategory.AdapterError, diagnostic.Category);
+        Assert.AreEqual((int)ZlgStatus.Error, diagnostic.NativeErrorCode);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(diagnostic.Hint));
+        Assert.AreEqual("ZCAN_GetDeviceInf", diagnostic.Details["nativeFunction"]);
+        Assert.AreEqual(((uint)ZlgStatus.Error).ToString(), diagnostic.Details["vendorCode"]);
+        Assert.AreEqual("deviceIndex=1", diagnostic.Details["nativeDetail"]);
+    }
+
     [TestMethod(DisplayName = "Platform support failures are mapped at the native boundary")]
     public void NativeExceptionMapper_TreatsPlatformNotSupportedAsNativeBoundary()
     {

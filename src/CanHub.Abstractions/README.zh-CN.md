@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Abstractions.svg)](https://www.nuget.org/packages/CanHub.Abstractions)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Abstractions` 是所有 CanHub 包共享的零依赖契约层。库项目如果只需要交换 CAN/CAN FD 帧、描述设备能力，或定义适配器相关接口，可以只引用本包，而不依赖 DI、Core 或厂商运行时。
 
 ## 安装

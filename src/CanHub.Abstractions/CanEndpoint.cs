@@ -3,10 +3,11 @@ using System.Collections.ObjectModel;
 namespace CanHub;
 
 /// <summary>
-/// 解析后的 CAN 适配器端点，格式为 URI：scheme://device?channel=0&amp;key=value。
-/// Scheme 按小写规范化，Device 保留原始大小写，channel 从查询参数中提取。<br/>
-/// Parsed CAN adapter endpoint in the URI format: scheme://device?channel=0&amp;key=value.
-/// Scheme is normalized to lowercase, Device preserves original casing, channel is extracted from query parameters.
+/// 解析后的 CAN 适配器端点，格式为 URI：scheme://device?channelIndex=0&amp;key=value。
+/// Scheme 按小写规范化，Device 保留原始大小写，channelIndex 从查询参数中提取；旧 channel 参数作为兼容别名。<br/>
+/// Parsed CAN adapter endpoint in the URI format: scheme://device?channelIndex=0&amp;key=value.
+/// Scheme is normalized to lowercase, Device preserves original casing, channelIndex is extracted from query parameters;
+/// the legacy channel parameter is accepted as a compatibility alias.
 /// </summary>
 public sealed class CanEndpoint : IEquatable<CanEndpoint>
 {
@@ -16,25 +17,28 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
     /// <summary>设备标识（URI 的 host 部分）。<br/>Device identifier (the URI host portion).</summary>
     public string Device { get; }
 
-    /// <summary>查询参数（已移除 channel 键）。<br/>Query parameters (channel key removed).</summary>
+    /// <summary>查询参数（已移除 channelIndex/channel 键）。<br/>Query parameters (channelIndex/channel keys removed).</summary>
     public IReadOnlyDictionary<string, string> Parameters { get; }
 
-    /// <summary>通道号（来自 ?channel=N，非负整数），未指定时为 null。<br/>Channel number (from ?channel=N, non-negative integer), null when not specified.</summary>
-    public int? Channel { get; }
+    /// <summary>通道索引（来自 ?channelIndex=N 或旧 ?channel=N，非负整数），未指定时为 null。<br/>Channel index (from ?channelIndex=N or legacy ?channel=N, non-negative integer), null when not specified.</summary>
+    public int? ChannelIndex { get; }
 
-    private CanEndpoint(string scheme, string device, IReadOnlyDictionary<string, string> parameters, int? channel)
+    /// <summary>通道索引兼容别名。建议新代码使用 <see cref="ChannelIndex"/>。<br/>Compatibility alias for the channel index. New code should use <see cref="ChannelIndex"/>.</summary>
+    public int? Channel => ChannelIndex;
+
+    private CanEndpoint(string scheme, string device, IReadOnlyDictionary<string, string> parameters, int? channelIndex)
     {
         Scheme = scheme;
         Device = device;
         Parameters = parameters;
-        Channel = channel;
+        ChannelIndex = channelIndex;
     }
 
     /// <summary>
     /// 将 URI 字符串解析为 <see cref="CanEndpoint"/>。<br/>
     /// Parses a URI string into a <see cref="CanEndpoint"/>.
     /// </summary>
-    /// <param name="uri">端点 URI，格式为 scheme://device[?channel=N&amp;key=value...]。<br/>Endpoint URI in the format scheme://device[?channel=N&amp;key=value...].</param>
+    /// <param name="uri">端点 URI，格式为 scheme://device[?channelIndex=N&amp;key=value...]，兼容旧 channel 参数。<br/>Endpoint URI in the format scheme://device[?channelIndex=N&amp;key=value...], with legacy channel compatibility.</param>
     /// <returns>解析后的端点。<br/>The parsed endpoint.</returns>
     /// <exception cref="CanException">URI 为空、格式无效、设备为空、包含片段、重复参数或通道号无效时抛出。<br/>Thrown when URI is empty, has invalid format, empty device, contains a fragment, has duplicate parameters, or invalid channel number.</exception>
     public static CanEndpoint Parse(string? uri)
@@ -123,7 +127,7 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
         // 从原始输入中解析查询参数（System.Uri 会去重，所以必须从原始字符串解析）
         var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int? channel = null;
+        int? channelIndex = null;
 
         if (qIdx >= 0)
         {
@@ -159,17 +163,17 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
                             $"端点 URI 包含重复的查询参数: '{key}'");
                     }
 
-                    if (string.Equals(key, "channel", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(key, "channelIndex", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(key, "channel", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!int.TryParse(value, out var channelValue) || channelValue < 0)
-                        {
+                        var parsedChannelIndex = ParseChannelIndexValue(value, key);
+                        if (channelIndex.HasValue && channelIndex.Value != parsedChannelIndex)
                             throw new CanException(
                                 "*",
                                 CanErrorCategory.InvalidEndpoint,
-                                $"通道号必须为非负整数，但收到: '{value}'");
-                        }
+                                $"端点 URI 中 channel 与 channelIndex 不一致: channelIndex={channelIndex.Value}, {key}={parsedChannelIndex}");
 
-                        channel = channelValue;
+                        channelIndex = parsedChannelIndex;
                     }
                     else
                     {
@@ -187,7 +191,7 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
             }
         }
 
-        return new CanEndpoint(scheme, device, new ReadOnlyDictionary<string, string>(parameters), channel);
+        return new CanEndpoint(scheme, device, new ReadOnlyDictionary<string, string>(parameters), channelIndex);
     }
 
     /// <summary>判断两个端点是否相等（结构比较，参数顺序无关）。<br/>Determines whether two endpoints are equal (structural comparison, parameter order independent).</summary>
@@ -198,7 +202,7 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
 
         return Scheme == other.Scheme
             && Device == other.Device
-            && Channel == other.Channel
+            && ChannelIndex == other.ChannelIndex
             && Parameters.Count == other.Parameters.Count
             && Parameters.All(p =>
                 other.Parameters.TryGetValue(p.Key, out var otherValue)
@@ -214,7 +218,7 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
         var hash = new HashCode();
         hash.Add(Scheme);
         hash.Add(Device);
-        hash.Add(Channel);
+        hash.Add(ChannelIndex);
 
         // 排序参数键以保证哈希一致性，避免 LINQ OrderBy 分配
         if (Parameters.Count > 0)
@@ -256,13 +260,13 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
         var sb = new System.Text.StringBuilder();
         sb.Append(Scheme).Append("://").Append(Device);
 
-        bool hasQuery = Channel.HasValue || (sortedKeys?.Length > 0);
+        bool hasQuery = ChannelIndex.HasValue || (sortedKeys?.Length > 0);
         if (hasQuery) sb.Append('?');
 
         bool first = true;
-        if (Channel.HasValue)
+        if (ChannelIndex.HasValue)
         {
-            sb.Append("channel=").Append(Channel.Value);
+            sb.Append("channelIndex=").Append(ChannelIndex.Value);
             first = false;
         }
 
@@ -295,5 +299,18 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
 
             i += 2;
         }
+    }
+
+    private static int ParseChannelIndexValue(string value, string key)
+    {
+        if (!int.TryParse(value, out var channelValue) || channelValue < 0)
+        {
+            throw new CanException(
+                "*",
+                CanErrorCategory.InvalidEndpoint,
+                $"通道索引参数 '{key}' 必须为非负整数，但收到: '{value}'");
+        }
+
+        return channelValue;
     }
 }

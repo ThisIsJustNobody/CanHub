@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Virtual.svg)](https://www.nuget.org/packages/CanHub.Adapter.Virtual)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Adapter.Virtual` 提供进程内 CAN/CAN FD 虚拟适配器，适合测试、演示和本地工具。它不需要硬件或原生驱动，便于在接入真实设备前验证应用逻辑。
 
 ## 安装
@@ -24,29 +28,29 @@ var registry = CanHubRegistry.CreateDefault()
 ## 端点格式
 
 ```text
-virtual://{busName}?channel={channelIndex}
+virtual://{busName}?channelIndex={channelIndex}
 ```
 
 示例：
 
 ```text
-virtual://demo?channel=0
-virtual://demo?channel=1
-virtual://isolated-test?channel=0
+virtual://demo?channelIndex=0
+virtual://demo?channelIndex=1
+virtual://isolated-test?channelIndex=0
 ```
 
-使用相同总线名的端点会共享同一个进程内虚拟总线。需要隔离测试时请使用不同总线名。总线名区分大小写。
+使用相同总线名的端点会共享同一个进程内虚拟总线。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。需要隔离测试时请使用不同总线名。总线名区分大小写。
 
 ## 使用示例
 
 ```csharp
 await using var tx = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
 await using var rx = await registry.OpenAsync(
-    "virtual://demo?channel=1",
+    "virtual://demo?channelIndex=1",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
@@ -69,7 +73,7 @@ await tx.SendAsync(
 var injector = new VirtualFaultInjector();
 
 await using var bus = await registry.OpenAsync(
-    "virtual://recovery?channel=0",
+    "virtual://recovery?channelIndex=0",
     new CanOpenOptions
     {
         Recovery = CanRecoveryOptions.ResetOnFault(restartDelay: TimeSpan.Zero),

@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Core.svg)](https://www.nuget.org/packages/CanHub.Core)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Core` provides the coordination layer for CanHub applications: DI registration, adapter lookup, endpoint parsing, scanning fan-out, frame broadcasting, and configuration conflict helpers. It depends on `CanHub.Abstractions`, but not on vendor SDKs.
 
 ## Install
@@ -45,7 +49,7 @@ var registry = CanHubRegistry.CreateDefault()
 
 ```csharp
 await using var bus = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 

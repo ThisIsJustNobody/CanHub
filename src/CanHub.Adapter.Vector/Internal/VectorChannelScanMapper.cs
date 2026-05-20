@@ -61,7 +61,7 @@ internal static class VectorChannelScanMapper
             capabilities.Add(new CanCapability("non-iso-fd", false, "BOSCH CAN FD support"));
         }
 
-        var endpoint = $"vector://{deviceName}?deviceIndex={deviceIndex}&channel={logicalChannelIndex}";
+        var endpoint = $"vector://{deviceName}?deviceIndex={deviceIndex}&channelIndex={logicalChannelIndex}";
         var availability = channel.isOnBus == 0
             ? CanChannelAvailability.Available
             : CanChannelAvailability.Active;
@@ -74,7 +74,11 @@ internal static class VectorChannelScanMapper
             nativeChannelIndex: nativeChannelIndex,
             endpoint: endpoint,
             availability: availability,
-            capabilities: capabilities);
+            capabilities: capabilities,
+            vendorName: "Vector",
+            hardwareId: $"{deviceName}:{deviceIndex}",
+            displayName: $"Vector {deviceName} #{deviceIndex} CH{logicalChannelIndex}",
+            recommendedBusParameters: CanBusParameters.Classic500k);
     }
 
     private static bool HasBusCapability(

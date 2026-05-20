@@ -48,7 +48,7 @@ var registry = CanHubRegistry.CreateDefault()
     .AddVirtualAdapter();
 
 await using var bus = await registry.OpenAsync(
-    "virtual://demo?channel=0",
+    "virtual://demo?channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
@@ -65,9 +65,9 @@ Console.WriteLine($"Submitted: {result.CorrelationId}");
 端点 scheme 和查询参数由各适配器定义：
 
 ```text
-virtual://demo?channel=0
-vector://VN1630A?deviceIndex=0&channel=0
-zlg://USBCANFD_200U?deviceIndex=0&channel=0
+virtual://demo?channelIndex=0
+vector://VN1630A?deviceIndex=0&channelIndex=0
+zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
 支持扫描的适配器可以通过 `CanHubRegistry.ScanAsync` 发现设备。硬件适配器在驱动运行时或设备缺失时会尽量返回诊断信息。

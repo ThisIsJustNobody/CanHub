@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Zlg.svg)](https://www.nuget.org/packages/CanHub.Adapter.Zlg)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-orange.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE-APACHE-2.0)
+
 `CanHub.Adapter.Zlg` 通过 ZLG CAN 运行时将 CanHub 连接到 ZLG USBCANFD 设备。它提供端点解析、原生资产加载、总线生命周期管理、CAN/CAN FD 发送接收和硬件诊断。
 
 ## 安装
@@ -26,16 +30,16 @@ var registry = CanHubRegistry.CreateDefault()
 ## 端点格式
 
 ```text
-zlg://{deviceType}?deviceIndex={index}&channel={channelIndex}
+zlg://{deviceType}?deviceIndex={index}&channelIndex={channelIndex}
 ```
 
 示例：
 
 ```text
-zlg://USBCANFD_200U?deviceIndex=0&channel=0
+zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
-首个支持的设备系列是 `USBCANFD_200U`。设备索引和通道编号以 ZLG 运行时为准。
+首个支持的设备系列是 `USBCANFD_200U`。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备索引和通道编号以 ZLG 运行时为准。
 
 ## 使用示例
 
@@ -43,7 +47,7 @@ zlg://USBCANFD_200U?deviceIndex=0&channel=0
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channel=0",
+    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```
@@ -58,7 +62,7 @@ ZLG 自动恢复通过 `CanOpenOptions.Recovery` 显式开启。默认值是 `Ca
 
 ```csharp
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channel=0",
+    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,
@@ -94,7 +98,7 @@ Vector 互通硬件测试还需要 `CANHUB_TEST_VECTOR=1`。默认使用 `VN5610
 
 ZLG 打开顺序诊断用例需额外设置 `CANHUB_TEST_ZLG_OPEN_DIAGNOSTICS=1`。该用例只反复打开/关闭两台 ZLG 在 Bus1 上的通道，不发送报文；可用 `CANHUB_TEST_ZLG_OPEN_DIAG_ITERATIONS` 调整重复次数，用于排查两个设备通道同时打开是否互相影响。
 
-若直接运行失败但调试模式不失败，可用 `CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS` 增加操作间隔，模拟调试器带来的延迟。需要更细分时，`CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS` 控制打开第一个通道后再打开第二个通道前的等待，`CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS` 控制每次关闭通道后的等待。本轮硬件观察中，加入 `StartCAN` 重试前，错误注入后继续跑打开顺序诊断时，关闭后等待 500ms、2000ms 甚至 5000ms 都可能稳定复现 `deviceIndex=1&channel=0` 的 `ZCAN_StartCAN Error(0)`；加入 `StartCAN` 重试后，无额外延迟和带 2000ms 关闭后等待的诊断均可通过。该诊断覆盖的是手动反复关闭/打开不同 ZLG 设备的驱动状态窗口，和自动恢复的同通道重开路径不是同一个通过标准。
+若直接运行失败但调试模式不失败，可用 `CANHUB_TEST_ZLG_OPEN_DIAG_STEP_DELAY_MS` 增加操作间隔，模拟调试器带来的延迟。需要更细分时，`CANHUB_TEST_ZLG_OPEN_DIAG_INTER_OPEN_DELAY_MS` 控制打开第一个通道后再打开第二个通道前的等待，`CANHUB_TEST_ZLG_OPEN_DIAG_AFTER_CLOSE_DELAY_MS` 控制每次关闭通道后的等待。本轮硬件观察中，加入 `StartCAN` 重试前，错误注入后继续跑打开顺序诊断时，关闭后等待 500ms、2000ms 甚至 5000ms 都可能稳定复现 `deviceIndex=1&channelIndex=0` 的 `ZCAN_StartCAN Error(0)`；加入 `StartCAN` 重试后，无额外延迟和带 2000ms 关闭后等待的诊断均可通过。该诊断覆盖的是手动反复关闭/打开不同 ZLG 设备的驱动状态窗口，和自动恢复的同通道重开路径不是同一个通过标准。
 
 也可以直接使用仓库内置的诊断设置文件运行，避免手动设置环境变量：
 
