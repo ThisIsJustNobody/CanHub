@@ -114,7 +114,7 @@ public sealed class CanHubRegistryScanTests
             {
                 ["deviceIndex"] = "0",
                 ["channelIndex"] = "0",
-                ["nativeDllPath"] = "C:\\Drivers\\zlgcan.dll",
+                ["nativeDllPath"] = "<native-dll-path>",
             });
         registry.AddAdapter(new FakeAdapterProvider("zlg", "ZLG", new[] { "zlg" },
             supportsScan: true,
@@ -131,7 +131,7 @@ public sealed class CanHubRegistryScanTests
         Assert.AreEqual("确认 ZLG 驱动已安装，且 native DLL 可被当前进程加载。", diagnostic.Hint);
         Assert.AreEqual("0", diagnostic.Details["deviceIndex"]);
         Assert.AreEqual("0", diagnostic.Details["channelIndex"]);
-        Assert.AreEqual("C:\\Drivers\\zlgcan.dll", diagnostic.Details["nativeDllPath"]);
+        Assert.AreEqual("<native-dll-path>", diagnostic.Details["nativeDllPath"]);
     }
 
     [TestMethod]
