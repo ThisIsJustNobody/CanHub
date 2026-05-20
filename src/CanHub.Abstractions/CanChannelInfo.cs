@@ -112,6 +112,40 @@ public sealed class CanChannelInfo
             && availability is not CanChannelAvailability.Error;
     }
 
+    /// <summary>
+    /// 创建一个 CAN 通道扫描条目，保留旧版二进制签名。<br/>
+    /// Creates a CAN channel scan entry, preserving the legacy binary signature.
+    /// </summary>
+    public CanChannelInfo(
+        string adapterId,
+        string deviceName,
+        int deviceIndex,
+        int channelIndex,
+        int? nativeChannelIndex,
+        string? endpoint,
+        CanChannelAvailability availability,
+        IReadOnlyList<CanCapability>? capabilities,
+        ScanDiagnostic? diagnostic)
+        : this(
+            adapterId,
+            deviceName,
+            deviceIndex,
+            channelIndex,
+            nativeChannelIndex,
+            endpoint,
+            availability,
+            capabilities,
+            diagnostic,
+            channelId: null,
+            displayName: null,
+            vendorName: null,
+            hardwareId: null,
+            serialNumber: null,
+            canonicalEndpoint: null,
+            recommendedBusParameters: null)
+    {
+    }
+
     private static string? TryCanonicalizeEndpoint(string? endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))

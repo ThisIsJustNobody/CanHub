@@ -180,6 +180,46 @@ public sealed class CanHubRegistryScanTests
         Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
     }
 
+    [TestMethod]
+    public async Task OpenAsync_UnsupportedChannelCarriesScanDiagnostic()
+    {
+        var registry = CanHubRegistry.CreateDefault();
+        var diagnostic = new ScanDiagnostic(
+            CanErrorCategory.AdapterError,
+            "Vector channel is not CAN-compatible.",
+            nativeErrorCode: 42,
+            recoverability: CanRecoverability.Retryable,
+            adapterId: "vector",
+            endpoint: "vector://VN5610A?deviceIndex=0&channelIndex=2",
+            hint: "请选择支持 CAN 的 Vector 通道。",
+            details: new Dictionary<string, string>
+            {
+                ["deviceIndex"] = "0",
+                ["channelIndex"] = "2",
+            });
+        var channel = new CanChannelInfo(
+            "vector",
+            "VN5610A",
+            0,
+            2,
+            5,
+            null,
+            CanChannelAvailability.Unsupported,
+            diagnostic: diagnostic);
+
+        var ex = await Assert.ThrowsExactlyAsync<CanException>(
+            () => registry.OpenAsync(channel, new CanOpenOptions(), CancellationToken.None).AsTask());
+
+        Assert.AreEqual(CanErrorCategory.AdapterError, ex.Category);
+        Assert.AreEqual("Vector channel is not CAN-compatible.", ex.Message);
+        Assert.AreEqual("vector://VN5610A?channelIndex=2&deviceIndex=0", ex.Endpoint?.ToString());
+        Assert.AreEqual(42, ex.VendorCode);
+        Assert.AreEqual(CanRecoverability.Retryable, ex.Recoverability);
+        Assert.AreEqual("请选择支持 CAN 的 Vector 通道。", ex.Hint);
+        Assert.AreEqual("0", ex.Details["deviceIndex"]);
+        Assert.AreEqual("2", ex.Details["channelIndex"]);
+    }
+
     // Fakes
     private sealed class FakeAdapterProvider : ICanAdapterProvider
     {

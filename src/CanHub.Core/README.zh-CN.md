@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Core.svg)](https://www.nuget.org/packages/CanHub.Core)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Core` 是 CanHub 应用的协调层，提供 DI 注册、适配器查找、端点解析、扫描聚合、帧广播和配置冲突辅助。它依赖 `CanHub.Abstractions`，但不依赖任何厂商 SDK。
 
 ## 安装

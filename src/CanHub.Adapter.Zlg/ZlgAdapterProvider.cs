@@ -178,11 +178,7 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
                     }
                     catch (ZlgApiException ex)
                     {
-                        diagnostics.Add(new ScanDiagnostic(
-                            CanErrorCategory.AdapterError,
-                            ex.Message,
-                            (int)ex.Status,
-                            adapterId: "zlg"));
+                        diagnostics.Add(ZlgExceptionMapper.ToScanDiagnostic(ex));
                     }
                     finally
                     {
@@ -201,11 +197,7 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
         }
         catch (Exception ex) when (ZlgExceptionMapper.IsNativeBoundaryException(ex))
         {
-            var mapped = ZlgExceptionMapper.ToCanException(ex);
-            diagnostics.Add(new ScanDiagnostic(
-                mapped.Category,
-                mapped.Message,
-                adapterId: "zlg"));
+            diagnostics.Add(ZlgExceptionMapper.ToScanDiagnostic(ex));
         }
 
         return ValueTask.FromResult(new CanChannelScanResult(channels, diagnostics));

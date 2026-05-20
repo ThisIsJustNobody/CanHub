@@ -52,6 +52,21 @@ public sealed class CanException : Exception
     }
 
     /// <summary>
+    /// 创建一个不包装内部异常的 CanException，保留旧版二进制签名。<br/>
+    /// Creates a CanException without an inner exception, preserving the legacy binary signature.
+    /// </summary>
+    public CanException(
+        string adapterId,
+        CanErrorCategory category,
+        CanEndpoint? endpoint,
+        string? nativeFunction,
+        int? vendorCode,
+        CanRecoverability recoverability)
+        : this(adapterId, category, endpoint, nativeFunction, vendorCode, recoverability, null, null)
+    {
+    }
+
+    /// <summary>
     /// 创建一个带自定义消息的 CanException。<br/>
     /// Creates a CanException with a custom message.
     /// </summary>
@@ -76,6 +91,31 @@ public sealed class CanException : Exception
         Recoverability = recoverability;
         Hint = string.IsNullOrWhiteSpace(hint) ? null : hint;
         Details = CopyDetails(details);
+    }
+
+    /// <summary>
+    /// 创建一个带自定义消息的 CanException，保留旧版二进制签名。<br/>
+    /// Creates a CanException with a custom message, preserving the legacy binary signature.
+    /// </summary>
+    public CanException(
+        string adapterId,
+        CanErrorCategory category,
+        string message)
+        : this(adapterId, category, message, null, null, null, null, CanRecoverability.Fatal, null, null)
+    {
+    }
+
+    /// <summary>
+    /// 创建一个包装内部异常的 CanException，保留旧版二进制签名。<br/>
+    /// Creates a CanException that wraps an inner exception, preserving the legacy binary signature.
+    /// </summary>
+    public CanException(
+        string adapterId,
+        CanErrorCategory category,
+        string message,
+        Exception innerException)
+        : this(adapterId, category, message, innerException, null, null, null, CanRecoverability.Fatal, null, null)
+    {
     }
 
     private static IReadOnlyDictionary<string, string> CopyDetails(IReadOnlyDictionary<string, string>? details)

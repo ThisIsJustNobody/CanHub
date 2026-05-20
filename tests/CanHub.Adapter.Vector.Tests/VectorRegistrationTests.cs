@@ -46,6 +46,20 @@ public sealed class VectorRegistrationTests
         Assert.IsFalse(LeaseConflictDetector.FingerprintsMatch(fp1, fp2));
     }
 
+    [TestMethod(DisplayName = "Vector scan driver failure includes hint and details")]
+    public void ScanDriverFailureDiagnostic_IncludesHintAndDetails()
+    {
+        var diagnostic = VectorAdapterProvider.CreateDriverConfigFailureDiagnostic(
+            XLDefine.XL_Status.XL_ERR_QUEUE_IS_EMPTY);
+
+        Assert.AreEqual("vector", diagnostic.AdapterId);
+        Assert.AreEqual(CanErrorCategory.AdapterError, diagnostic.Category);
+        Assert.AreEqual((int)XLDefine.XL_Status.XL_ERR_QUEUE_IS_EMPTY, diagnostic.NativeErrorCode);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(diagnostic.Hint));
+        Assert.AreEqual("XL_GetDriverConfig", diagnostic.Details["nativeFunction"]);
+        Assert.AreEqual(((int)XLDefine.XL_Status.XL_ERR_QUEUE_IS_EMPTY).ToString(), diagnostic.Details["vendorCode"]);
+    }
+
     [TestMethod(DisplayName = "Vector拒绝未知NativeOptions类型")]
     public async Task OpenAsync_UnknownNativeOptions_ThrowsConfigurationConflict()
     {

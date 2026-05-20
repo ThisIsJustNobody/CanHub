@@ -225,9 +225,23 @@ public sealed class CanHubRegistry
 
         if (!channel.CanOpen || string.IsNullOrWhiteSpace(channel.Endpoint))
         {
-            var message = channel.Diagnostic?.Message
-                ?? $"Scanned channel '{channel.DeviceName}[{channel.DeviceIndex}] channel {channel.ChannelIndex}' cannot be opened.";
-            throw new CanException(channel.AdapterId, CanErrorCategory.InvalidEndpoint, message);
+            if (channel.Diagnostic is { } diagnostic)
+            {
+                throw new CanException(
+                    channel.AdapterId,
+                    diagnostic.Category,
+                    diagnostic.Message,
+                    endpoint: TryParseEndpoint(diagnostic.Endpoint),
+                    vendorCode: diagnostic.NativeErrorCode,
+                    recoverability: diagnostic.Recoverability,
+                    hint: diagnostic.Hint,
+                    details: diagnostic.Details);
+            }
+
+            throw new CanException(
+                channel.AdapterId,
+                CanErrorCategory.InvalidEndpoint,
+                $"Scanned channel '{channel.DeviceName}[{channel.DeviceIndex}] channel {channel.ChannelIndex}' cannot be opened.");
         }
 
         return OpenAsync(channel.Endpoint, options, ct);
@@ -255,5 +269,20 @@ public sealed class CanHubRegistry
 
         var context = new CanOpenContext(parsed, options);
         return provider.OpenAsync(context, ct);
+    }
+
+    private static CanEndpoint? TryParseEndpoint(string? endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            return null;
+
+        try
+        {
+            return CanEndpoint.Parse(endpoint);
+        }
+        catch (CanException)
+        {
+            return null;
+        }
     }
 }

@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Vector.svg)](https://www.nuget.org/packages/CanHub.Adapter.Vector)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-orange.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE-APACHE-2.0)
+
 `CanHub.Adapter.Vector` connects CanHub to Vector CAN/CAN FD interfaces through the Vector XL Driver API. It provides endpoint parsing, native runtime loading, shared-channel leasing, capability metadata, and hardware diagnostics.
 
 ## Install

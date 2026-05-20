@@ -54,4 +54,19 @@ public sealed class ScanDiagnostic
             ? new Dictionary<string, string>()
             : new Dictionary<string, string>(details, StringComparer.Ordinal);
     }
+
+    /// <summary>
+    /// 创建扫描诊断记录，保留旧版二进制签名。<br/>
+    /// Creates a scan diagnostic record, preserving the legacy binary signature.
+    /// </summary>
+    public ScanDiagnostic(
+        CanErrorCategory category,
+        string message,
+        int? nativeErrorCode,
+        CanRecoverability recoverability,
+        string adapterId,
+        string? endpoint)
+        : this(category, message, nativeErrorCode, recoverability, adapterId, endpoint, null, null)
+    {
+    }
 }

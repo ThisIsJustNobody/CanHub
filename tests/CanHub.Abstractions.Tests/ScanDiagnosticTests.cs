@@ -4,6 +4,19 @@ namespace CanHub.Abstractions.Tests;
 public sealed class ScanDiagnosticTests
 {
     [TestMethod]
+    public void PublicConstructor_LegacySignature_IsPreserved()
+    {
+        Assert.IsNotNull(typeof(ScanDiagnostic).GetConstructor([
+            typeof(CanErrorCategory),
+            typeof(string),
+            typeof(int?),
+            typeof(CanRecoverability),
+            typeof(string),
+            typeof(string),
+        ]));
+    }
+
+    [TestMethod]
     public void Constructor_SetsProperties()
     {
         var diag = new ScanDiagnostic(

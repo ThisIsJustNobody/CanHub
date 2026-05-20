@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Trace.VectorAsc.svg)](https://www.nuget.org/packages/CanHub.Trace.VectorAsc)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Trace.VectorAsc` reads and writes Vector-style `.asc` CAN/CAN FD trace files for CanHub frame models.
 
 The package targets `net10.0`, is hardware-independent, and depends only on `CanHub.Abstractions`.

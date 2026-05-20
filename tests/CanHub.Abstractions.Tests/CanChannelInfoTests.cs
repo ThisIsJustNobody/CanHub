@@ -4,6 +4,22 @@ namespace CanHub.Abstractions.Tests;
 public sealed class CanChannelInfoTests
 {
     [TestMethod]
+    public void PublicConstructor_LegacySignature_IsPreserved()
+    {
+        Assert.IsNotNull(typeof(CanChannelInfo).GetConstructor([
+            typeof(string),
+            typeof(string),
+            typeof(int),
+            typeof(int),
+            typeof(int?),
+            typeof(string),
+            typeof(CanChannelAvailability),
+            typeof(IReadOnlyList<CanCapability>),
+            typeof(ScanDiagnostic),
+        ]));
+    }
+
+    [TestMethod]
     public void Constructor_SetsChannelProperties()
     {
         var caps = new[] { new CanCapability("can-fd", false) };

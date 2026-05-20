@@ -2,6 +2,10 @@
 
 [简体中文](README.zh-CN.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Zlg.svg)](https://www.nuget.org/packages/CanHub.Adapter.Zlg)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-orange.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE-APACHE-2.0)
+
 `CanHub.Adapter.Zlg` connects CanHub to ZLG USBCANFD devices through the ZLG CAN runtime. It provides endpoint parsing, native asset loading, bus lifecycle management, CAN/CAN FD transmission, and hardware diagnostics.
 
 ## Install

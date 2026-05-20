@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Zlg.svg)](https://www.nuget.org/packages/CanHub.Adapter.Zlg)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-orange.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE-APACHE-2.0)
+
 `CanHub.Adapter.Zlg` 通过 ZLG CAN 运行时将 CanHub 连接到 ZLG USBCANFD 设备。它提供端点解析、原生资产加载、总线生命周期管理、CAN/CAN FD 发送接收和硬件诊断。
 
 ## 安装

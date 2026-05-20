@@ -73,6 +73,24 @@ internal static class ZlgExceptionMapper
     }
 
     /// <summary>
+    /// 将原生异常映射为扫描诊断，并保留可读提示和结构化详情。<br/>
+    /// Maps a native exception to scan diagnostics while preserving hints and structured details.
+    /// </summary>
+    public static ScanDiagnostic ToScanDiagnostic(Exception exception, CanOpenContext? context = null)
+    {
+        var mapped = ToCanException(exception, context);
+        return new ScanDiagnostic(
+            mapped.Category,
+            mapped.Message,
+            mapped.VendorCode,
+            mapped.Recoverability,
+            mapped.AdapterId,
+            mapped.Endpoint?.ToString(),
+            mapped.Hint,
+            mapped.Details);
+    }
+
+    /// <summary>
     /// 为打开流程中的 CanException 补充端点、打开参数和排障提示。<br/>
     /// Enriches a CanException from the open path with endpoint, open parameters, and troubleshooting hints.
     /// </summary>

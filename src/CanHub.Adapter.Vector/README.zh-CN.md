@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Vector.svg)](https://www.nuget.org/packages/CanHub.Adapter.Vector)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-orange.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE-APACHE-2.0)
+
 `CanHub.Adapter.Vector` 通过 Vector XL Driver API 将 CanHub 连接到 Vector CAN/CAN FD 设备。它提供端点解析、原生运行时加载、共享通道租约、能力元数据和硬件诊断。
 
 ## 安装

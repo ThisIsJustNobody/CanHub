@@ -131,11 +131,7 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
             if (status != XLDefine.XL_Status.XL_SUCCESS)
             {
                 return new CanChannelScanResult(diagnostics: [
-                    new ScanDiagnostic(
-                        CanErrorCategory.AdapterError,
-                        $"XL_GetDriverConfig failed: {VectorDriver.Driver.XL_GetErrorString(status)}",
-                        (int)status,
-                        adapterId: "vector")
+                    CreateDriverConfigFailureDiagnostic(status)
                 ]);
             }
 
@@ -278,6 +274,22 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
 
         throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
             $"Vector adapter NativeOptions must be {nameof(VectorOpenOptions)} when specified.");
+    }
+
+    internal static ScanDiagnostic CreateDriverConfigFailureDiagnostic(XLDefine.XL_Status status)
+    {
+        var vendorCode = (int)status;
+        return new ScanDiagnostic(
+            CanErrorCategory.AdapterError,
+            $"XL_GetDriverConfig failed: {VectorDriver.Driver.XL_GetErrorString(status)}",
+            vendorCode,
+            adapterId: "vector",
+            hint: "检查 Vector XL Driver 是否已安装、设备是否连接，或当前进程是否能加载 Vector 驱动运行时。",
+            details: new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["nativeFunction"] = "XL_GetDriverConfig",
+                ["vendorCode"] = vendorCode.ToString(),
+            });
     }
 
     private static CanException EnrichOpenException(CanException ex, CanOpenContext context)

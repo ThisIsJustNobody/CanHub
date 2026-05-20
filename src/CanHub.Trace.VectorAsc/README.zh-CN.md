@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Trace.VectorAsc.svg)](https://www.nuget.org/packages/CanHub.Trace.VectorAsc)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Trace.VectorAsc` 用于读取和写入 Vector 风格的 `.asc` CAN/CAN FD Trace 文件，并映射到 CanHub 帧模型。
 
 该包目标框架为 `net10.0`，不依赖硬件或驱动，仅依赖 `CanHub.Abstractions`。

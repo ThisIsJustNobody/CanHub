@@ -2,6 +2,10 @@
 
 [English](README.md)
 
+[![NuGet](https://img.shields.io/nuget/v/CanHub.Adapter.Virtual.svg)](https://www.nuget.org/packages/CanHub.Adapter.Virtual)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ThisIsJustNobody/CanHub/blob/main/LICENSE)
+
 `CanHub.Adapter.Virtual` 提供进程内 CAN/CAN FD 虚拟适配器，适合测试、演示和本地工具。它不需要硬件或原生驱动，便于在接入真实设备前验证应用逻辑。
 
 ## 安装

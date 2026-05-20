@@ -7,6 +7,30 @@ public class CanExceptionTests
 {
     #region Basic Construction
 
+    [TestMethod(DisplayName = "旧版公共构造函数签名仍保留")]
+    public void PublicConstructors_LegacySignatures_ArePreserved()
+    {
+        Assert.IsNotNull(typeof(CanException).GetConstructor([
+            typeof(string),
+            typeof(CanErrorCategory),
+            typeof(CanEndpoint),
+            typeof(string),
+            typeof(int?),
+            typeof(CanRecoverability),
+        ]));
+        Assert.IsNotNull(typeof(CanException).GetConstructor([
+            typeof(string),
+            typeof(CanErrorCategory),
+            typeof(string),
+        ]));
+        Assert.IsNotNull(typeof(CanException).GetConstructor([
+            typeof(string),
+            typeof(CanErrorCategory),
+            typeof(string),
+            typeof(Exception),
+        ]));
+    }
+
     [TestMethod(DisplayName = "构造函数设置适配器ID和类别属性")]
     public void Constructor_AdapterIdAndCategory_SetsProperties()
     {
