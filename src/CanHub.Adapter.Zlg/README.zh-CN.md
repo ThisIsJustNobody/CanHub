@@ -75,6 +75,22 @@ await using var bus = await registry.OpenAsync(
 
 目标通道配置为 CAN FD 时，可通过 `CanOpenOptions.BusParameters` 传入 CAN FD 设置，例如 `CanBusParameters.Fd500k2M`。
 
+## 诊断
+
+打开通道前，可以用 `ZlgDiagnostics.CheckRuntimeAsync` 检查 Windows 平台、原生运行时文件、DLL 加载和设备扫描链路：
+
+```csharp
+var report = await ZlgDiagnostics.CheckRuntimeAsync(ct: CancellationToken.None);
+
+if (!report.IsReady)
+{
+    foreach (var diagnostic in report.Diagnostics)
+        Console.WriteLine($"{diagnostic.Category}: {diagnostic.Message} {diagnostic.Hint}");
+}
+```
+
+该诊断会加载 ZLG 原生运行时并扫描设备，但不会打开具体通道。`report.HasOpenableChannel` 表示扫描结果中是否存在 CanHub 可尝试打开的通道。
+
 ## 自动恢复
 
 ZLG 自动恢复通过 `CanOpenOptions.Recovery` 显式开启。默认值是 `CanRecoveryOptions.Disabled`，即只上报总线/原生错误，不主动关闭或重开通道。

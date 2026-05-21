@@ -75,6 +75,22 @@ await using var bus = await registry.OpenAsync(
 
 Use `CanOpenOptions.BusParameters` for CAN FD when the target channel is configured for CAN FD, for example `CanBusParameters.Fd500k2M`.
 
+## Diagnostics
+
+Use `ZlgDiagnostics.CheckRuntimeAsync` before opening a channel when you want to verify the Windows platform, native runtime files, DLL loading, and device scan path:
+
+```csharp
+var report = await ZlgDiagnostics.CheckRuntimeAsync(ct: CancellationToken.None);
+
+if (!report.IsReady)
+{
+    foreach (var diagnostic in report.Diagnostics)
+        Console.WriteLine($"{diagnostic.Category}: {diagnostic.Message} {diagnostic.Hint}");
+}
+```
+
+The diagnostic check loads the ZLG native runtime and scans devices, but it does not open a specific channel. `report.HasOpenableChannel` indicates whether scanning found at least one channel that CanHub can try to open.
+
 ## Recovery
 
 ZLG recovery is opt-in through `CanOpenOptions.Recovery`. The default is `CanRecoveryOptions.Disabled`, which reports bus/native errors without closing or reopening the channel.
