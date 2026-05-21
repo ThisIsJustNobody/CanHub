@@ -5,30 +5,37 @@
     <_CanHubVectorRuntimeIdentifierIsX86>$([System.String]::Copy('$(RuntimeIdentifier)').ToLowerInvariant().EndsWith('-x86'))</_CanHubVectorRuntimeIdentifierIsX86>
     <_CanHubVectorRuntimeIdentifierIsX64>$([System.String]::Copy('$(RuntimeIdentifier)').ToLowerInvariant().EndsWith('-x64'))</_CanHubVectorRuntimeIdentifierIsX64>
     <_CanHubVectorPlatformTarget>$([System.String]::Copy('$(PlatformTarget)').ToLowerInvariant())</_CanHubVectorPlatformTarget>
-    <_CanHubVectorPlatform>$([System.String]::Copy('$(Platform)').ToLowerInvariant())</_CanHubVectorPlatform>
+    <_CanHubVectorHostArchitecture>$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)</_CanHubVectorHostArchitecture>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(_CanHubVectorRuntimeIdentifier)' != '' and '$(_CanHubVectorRuntimeIdentifierIsWindows)' == 'True'">
-    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorRuntimeIdentifierIsX86)' == 'True'">win-x86</_CanHubVectorNativeRid>
-    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorRuntimeIdentifierIsX64)' == 'True'">win-x64</_CanHubVectorNativeRid>
+  <PropertyGroup>
+    <_CanHubVectorHostArchitecture>$([System.String]::Copy('$(_CanHubVectorHostArchitecture)').ToLowerInvariant())</_CanHubVectorHostArchitecture>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(_CanHubVectorRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT'">
-    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and ('$(_CanHubVectorPlatformTarget)' == 'x86' or '$(_CanHubVectorPlatform)' == 'x86')">win-x86</_CanHubVectorNativeRid>
-    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and ('$(_CanHubVectorPlatformTarget)' == 'x64' or '$(_CanHubVectorPlatform)' == 'x64')">win-x64</_CanHubVectorNativeRid>
-    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'x86' and '$(PROCESSOR_ARCHITEW6432)' == ''">win-x86</_CanHubVectorNativeRid>
-    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == ''">win-x64</_CanHubVectorNativeRid>
+  <PropertyGroup>
+    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorRuntimeIdentifier)' != '' and '$(_CanHubVectorRuntimeIdentifierIsWindows)' == 'True' and '$(_CanHubVectorRuntimeIdentifierIsX86)' == 'True'">win-x86</_CanHubVectorNativeRid>
+    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorRuntimeIdentifier)' != '' and '$(_CanHubVectorRuntimeIdentifierIsWindows)' == 'True' and '$(_CanHubVectorRuntimeIdentifierIsX64)' == 'True'">win-x64</_CanHubVectorNativeRid>
+    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and '$(_CanHubVectorRuntimeIdentifier)' == '' and '$(_CanHubVectorPlatformTarget)' == 'x86'">win-x86</_CanHubVectorNativeRid>
+    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and '$(_CanHubVectorRuntimeIdentifier)' == '' and '$(_CanHubVectorPlatformTarget)' == 'x64'">win-x64</_CanHubVectorNativeRid>
+    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and '$(_CanHubVectorRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT' and '$(_CanHubVectorHostArchitecture)' == 'x86'">win-x86</_CanHubVectorNativeRid>
+    <_CanHubVectorNativeRid Condition="'$(_CanHubVectorNativeRid)' == '' and '$(_CanHubVectorRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT' and '$(_CanHubVectorHostArchitecture)' == 'x64'">win-x64</_CanHubVectorNativeRid>
+    <_CanHubVectorNativeArch Condition="'$(_CanHubVectorNativeRid)' == 'win-x86'">x86</_CanHubVectorNativeArch>
+    <_CanHubVectorNativeArch Condition="'$(_CanHubVectorNativeRid)' == 'win-x64'">x64</_CanHubVectorNativeArch>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(_CanHubVectorNativeRid)' == 'win-x64'">
-    <Content Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\vxlapi64.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             Link="vxlapi64.dll" />
+  <ItemGroup Condition="'$(_CanHubVectorNativeRid)' != ''">
+    <CanHubVectorNative Include="$(MSBuildThisFileDirectory)native\$(_CanHubVectorNativeRid)\*" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(_CanHubVectorNativeRid)' == 'win-x86'">
-    <Content Include="$(MSBuildThisFileDirectory)..\runtimes\win-x86\native\vxlapi.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             Link="vxlapi.dll" />
-  </ItemGroup>
+  <Target Name="CopyCanHubVectorNative" AfterTargets="Build" Condition="'@(CanHubVectorNative)' != ''">
+    <Copy SourceFiles="@(CanHubVectorNative)"
+          DestinationFiles="@(CanHubVectorNative->'$(OutputPath)canhub\vector\$(_CanHubVectorNativeArch)\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyCanHubVectorNativeToPublish" AfterTargets="Publish" Condition="'@(CanHubVectorNative)' != '' and '$(PublishDir)' != ''">
+    <Copy SourceFiles="@(CanHubVectorNative)"
+          DestinationFiles="@(CanHubVectorNative->'$(PublishDir)canhub\vector\$(_CanHubVectorNativeArch)\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

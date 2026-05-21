@@ -7,7 +7,7 @@ var registry = CanHubRegistry.CreateDefault()
     .AddVectorAdapter();
 var adapter = registry.FindAdapter("vector");
 Require(adapter is not null, "Vector adapter was not registered.");
-Require(adapter.Manifest.SupportsChannelScan, "Vector manifest did not declare scan support.");
+Require(adapter!.Manifest.SupportsChannelScan, "Vector manifest did not declare scan support.");
 
 var services = new ServiceCollection();
 services.AddCanHub()
@@ -26,7 +26,15 @@ RequireFile("CanHub.Adapter.Vector.dll");
 RequireFile("vxlapi_NET.dll");
 
 if (OperatingSystem.IsWindows())
-    RequireFile(Environment.Is64BitProcess ? "vxlapi64.dll" : "vxlapi.dll");
+{
+    var archFolder = Environment.Is64BitProcess ? "x64" : "x86";
+    var nativeFile = Environment.Is64BitProcess ? "vxlapi64.dll" : "vxlapi.dll";
+    RequireFile(Path.Combine("canhub", "vector", archFolder, nativeFile));
+    RequireMissingFile("vxlapi64.dll");
+    RequireMissingFile("vxlapi.dll");
+    Require(new XLDriver().XL_GetErrorString(XLDefine.XL_Status.XL_SUCCESS) == "XL_SUCCESS",
+        "Vector native DLL was not resolved from the namespaced output folder.");
+}
 
 Console.WriteLine("vector-ok");
 
@@ -41,4 +49,11 @@ static void RequireFile(string relativePath)
     var path = Path.Combine(AppContext.BaseDirectory, relativePath);
     if (!File.Exists(path))
         throw new FileNotFoundException($"Expected file was not copied to output: {relativePath}", path);
+}
+
+static void RequireMissingFile(string relativePath)
+{
+    var path = Path.Combine(AppContext.BaseDirectory, relativePath);
+    if (File.Exists(path))
+        throw new InvalidOperationException($"Unexpected file was copied to output root: {relativePath}");
 }

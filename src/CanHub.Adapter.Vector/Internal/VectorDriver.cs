@@ -21,7 +21,14 @@ internal sealed class VectorDriver : IAsyncDisposable
     /// 共享的 Vector XL Driver 实例。<br/>
     /// The shared Vector XL Driver instance.
     /// </summary>
-    public static XLDriver Driver => s_driver;
+    public static XLDriver Driver
+    {
+        get
+        {
+            VectorNativeLoader.EnsureRegistered();
+            return s_driver;
+        }
+    }
 
     internal static IDisposable UseLifecycleHooksForTesting(
         Func<XLDefine.XL_Status> openDriver,
@@ -69,6 +76,8 @@ internal sealed class VectorDriver : IAsyncDisposable
     /// </summary>
     public ValueTask AcquireAsync()
     {
+        VectorNativeLoader.EnsureRegistered();
+
         lock (s_gate)
         {
             s_referenceCount++;

@@ -6,75 +6,80 @@ namespace CanHub.Adapter.Vector.Tests;
 [TestClass]
 public sealed class VectorNativeAssetTargetsTests
 {
-    [TestMethod(DisplayName = "Vector targets select Windows native asset by RuntimeIdentifier")]
-    [DataRow("win-x86", "x64", "vxlapi.dll")]
-    [DataRow("win-x64", "x86", "vxlapi64.dll")]
-    [DataRow("win10-x86", "x64", "vxlapi.dll")]
-    [DataRow("win10-x64", "x86", "vxlapi64.dll")]
-    public void NativeTargets_WindowsRuntimeIdentifierSelectsNativeAsset(
+    [TestMethod(DisplayName = "Vector targets copy Windows native asset to namespaced folder by RuntimeIdentifier")]
+    [DataRow("win-x86", "x64", "x86", "vxlapi.dll")]
+    [DataRow("win-x64", "x86", "x64", "vxlapi64.dll")]
+    [DataRow("win10-x86", "x64", "x86", "vxlapi.dll")]
+    [DataRow("win10-x64", "x86", "x64", "vxlapi64.dll")]
+    public void NativeTargets_WindowsRuntimeIdentifierCopiesNativeAssetToNamespacedFolder(
         string runtimeIdentifier,
         string platformTarget,
-        string expectedLink)
+        string expectedArch,
+        string expectedFileName)
     {
-        var contentLinks = EvaluateContentLinks(runtimeIdentifier, platformTarget);
+        var result = CopyNativeMarkers(runtimeIdentifier, platformTarget);
+        var expectedPath = string.Join('/', "canhub", "vector", expectedArch, expectedFileName);
 
-        CollectionAssert.Contains(contentLinks, expectedLink);
+        CollectionAssert.Contains(result.RelativeFiles, expectedPath);
+        CollectionAssert.DoesNotContain(result.RelativeFiles, "vxlapi.dll");
+        CollectionAssert.DoesNotContain(result.RelativeFiles, "vxlapi64.dll");
+        Assert.AreEqual(expectedArch, result.FileContents[expectedPath]);
     }
 
-    [TestMethod(DisplayName = "Vector targets do not select Windows assets for non-Windows RID")]
-    public void NativeTargets_NonWindowsRuntimeIdentifierDoesNotSelectNativeAsset()
+    [TestMethod(DisplayName = "Vector targets do not copy Windows assets for non-Windows RID")]
+    public void NativeTargets_NonWindowsRuntimeIdentifierDoesNotCopyNativeAsset()
     {
-        var contentLinks = EvaluateContentLinks("linux-x64", "AnyCPU");
+        var result = CopyNativeMarkers("linux-x64", "AnyCPU");
 
-        Assert.AreEqual(0, contentLinks.Length);
+        Assert.AreEqual(0, result.RelativeFiles.Length);
     }
 
-    private static string[] EvaluateContentLinks(string runtimeIdentifier, string platformTarget)
+    private static CopyResult CopyNativeMarkers(string runtimeIdentifier, string platformTarget)
     {
         var workspace = Path.Combine(
             Path.GetTempPath(),
             "CanHub.Vector.Targets." + Guid.NewGuid().ToString("N"));
 
+        var packageRoot = Path.Combine(workspace, "package");
+        var outputPath = Path.Combine(workspace, "out") + Path.DirectorySeparatorChar;
+
         try
         {
-            var packageRoot = Path.Combine(workspace, "package");
             var targetDirectory = Path.Combine(packageRoot, "buildTransitive");
             Directory.CreateDirectory(targetDirectory);
             var targetPath = Path.Combine(targetDirectory, "CanHub.Adapter.Vector.targets");
             File.Copy(FindTargetsFile(), targetPath);
 
-            WriteNativeMarker(packageRoot, "win-x86", "vxlapi.dll");
-            WriteNativeMarker(packageRoot, "win-x64", "vxlapi64.dll");
+            WriteNativeMarker(packageRoot, "win-x86", "vxlapi.dll", "x86");
+            WriteNativeMarker(packageRoot, "win-x64", "vxlapi64.dll", "x64");
 
-            var outputPath = Path.Combine(workspace, "out") + Path.DirectorySeparatorChar;
-            var contentPath = Path.Combine(outputPath, "content.txt");
-            var projectPath = Path.Combine(workspace, "evaluate.csproj");
+            var projectPath = Path.Combine(workspace, "evaluate.proj");
             File.WriteAllText(projectPath, $"""
-                <Project Sdk="Microsoft.NET.Sdk">
+                <Project>
+                  <Import Project="{SecurityElement.Escape(targetPath)}" />
                   <PropertyGroup>
-                    <TargetFramework>net10.0</TargetFramework>
                     <OutputPath>{SecurityElement.Escape(outputPath)}</OutputPath>
                   </PropertyGroup>
-                  <Import Project="{SecurityElement.Escape(targetPath)}" />
-                  <Target Name="WriteContentLinks">
-                    <MakeDir Directories="{SecurityElement.Escape(outputPath)}" />
-                    <WriteLinesToFile
-                      File="{SecurityElement.Escape(contentPath)}"
-                      Lines="@(Content->'%(Link)')"
-                      Overwrite="true" />
-                  </Target>
+                  <Target Name="Build" />
                 </Project>
                 """);
 
-            var result = RunMsBuild(projectPath, runtimeIdentifier, platformTarget);
-            Assert.AreEqual(0, result.ExitCode, result.Output);
+            var msbuildResult = RunMsBuild(projectPath, runtimeIdentifier, platformTarget);
+            Assert.AreEqual(0, msbuildResult.ExitCode, msbuildResult.Output);
 
-            if (!File.Exists(contentPath))
-                return [];
+            if (!Directory.Exists(outputPath))
+                return new CopyResult([], new Dictionary<string, string>(StringComparer.Ordinal));
 
-            return File.ReadAllLines(contentPath)
-                .Where(line => !string.IsNullOrWhiteSpace(line))
+            var relativeFiles = Directory.EnumerateFiles(outputPath, "*", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(outputPath, path))
+                .Select(path => path.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
                 .ToArray();
+            var fileContents = relativeFiles.ToDictionary(
+                path => path,
+                path => File.ReadAllText(Path.Combine(outputPath, path)),
+                StringComparer.Ordinal);
+
+            return new CopyResult(relativeFiles, fileContents);
         }
         finally
         {
@@ -83,11 +88,11 @@ public sealed class VectorNativeAssetTargetsTests
         }
     }
 
-    private static void WriteNativeMarker(string packageRoot, string rid, string fileName)
+    private static void WriteNativeMarker(string packageRoot, string rid, string fileName, string marker)
     {
-        var nativeDirectory = Path.Combine(packageRoot, "runtimes", rid, "native");
+        var nativeDirectory = Path.Combine(packageRoot, "buildTransitive", "native", rid);
         Directory.CreateDirectory(nativeDirectory);
-        File.WriteAllText(Path.Combine(nativeDirectory, fileName), rid);
+        File.WriteAllText(Path.Combine(nativeDirectory, fileName), marker);
     }
 
     private static (int ExitCode, string Output) RunMsBuild(
@@ -99,7 +104,7 @@ public sealed class VectorNativeAssetTargetsTests
         process.StartInfo.FileName = "dotnet";
         process.StartInfo.ArgumentList.Add("msbuild");
         process.StartInfo.ArgumentList.Add(projectPath);
-        process.StartInfo.ArgumentList.Add("/t:WriteContentLinks");
+        process.StartInfo.ArgumentList.Add("/t:Build");
         process.StartInfo.ArgumentList.Add("/v:m");
         process.StartInfo.ArgumentList.Add("/nologo");
         process.StartInfo.ArgumentList.Add("/p:RuntimeIdentifier=" + runtimeIdentifier);
@@ -139,4 +144,6 @@ public sealed class VectorNativeAssetTargetsTests
         Assert.Fail("Could not locate src/CanHub.Adapter.Vector/build/CanHub.Adapter.Vector.targets from the test output directory.");
         return string.Empty;
     }
+
+    private sealed record CopyResult(string[] RelativeFiles, IReadOnlyDictionary<string, string> FileContents);
 }
