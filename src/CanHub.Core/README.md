@@ -48,15 +48,17 @@ var registry = CanHubRegistry.CreateDefault()
 ## Open A Bus
 
 ```csharp
+var endpoint = CanEndpoint.Create("virtual", "demo", channelIndex: 0);
+
 await using var bus = await registry.OpenAsync(
-    "virtual://demo?channelIndex=0",
+    endpoint,
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
 using var subscription = bus.Subscribe(new CanSubscriptionOptions());
 ```
 
-Endpoint schemes are mapped to registered adapters. Unknown schemes fail before any vendor runtime is touched.
+Endpoint schemes are mapped to registered adapters. Unknown schemes fail before any vendor runtime is touched. Adapter packages may provide dedicated endpoint builders, such as `ZlgEndpoint` or `VectorEndpoint`, for fixed-device configuration.
 
 ## Scan Devices
 
@@ -64,7 +66,7 @@ Endpoint schemes are mapped to registered adapters. Unknown schemes fail before 
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 ```
 
-The registry asks every adapter that supports scanning and returns both discovered devices and diagnostics. Missing hardware or missing native drivers should be surfaced as diagnostics rather than crashing the host process.
+The registry asks every adapter that supports scanning and returns both discovered devices and diagnostics. Missing hardware or missing native drivers should be surfaced as diagnostics rather than crashing the host process. If a channel came from scanning, prefer `registry.OpenAsync(channel, options, ct)` or the scanned endpoint fields instead of rebuilding the endpoint manually.
 
 ## Broadcast And Conflict Helpers
 

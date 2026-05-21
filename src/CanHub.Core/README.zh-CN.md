@@ -48,15 +48,17 @@ var registry = CanHubRegistry.CreateDefault()
 ## 打开总线
 
 ```csharp
+var endpoint = CanEndpoint.Create("virtual", "demo", channelIndex: 0);
+
 await using var bus = await registry.OpenAsync(
-    "virtual://demo?channelIndex=0",
+    endpoint,
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 
 using var subscription = bus.Subscribe(new CanSubscriptionOptions());
 ```
 
-注册表根据端点 scheme 选择适配器。未知 scheme 会在接触任何厂商运行时之前失败。
+注册表根据端点 scheme 选择适配器。未知 scheme 会在接触任何厂商运行时之前失败。适配器包可以提供专用 endpoint builder，例如 `ZlgEndpoint` 或 `VectorEndpoint`，用于固定设备配置。
 
 ## 扫描设备
 
@@ -64,7 +66,7 @@ using var subscription = bus.Subscribe(new CanSubscriptionOptions());
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 ```
 
-注册表会调用所有支持扫描的适配器，并汇总设备和诊断信息。缺少硬件或原生驱动时，适配器应尽量返回诊断，而不是让宿主进程崩溃。
+注册表会调用所有支持扫描的适配器，并汇总设备和诊断信息。缺少硬件或原生驱动时，适配器应尽量返回诊断，而不是让宿主进程崩溃。若通道来自扫描，优先使用 `registry.OpenAsync(channel, options, ct)` 或扫描结果中的 endpoint 字段，不要重新手写拼接。
 
 ## 广播和冲突辅助
 
