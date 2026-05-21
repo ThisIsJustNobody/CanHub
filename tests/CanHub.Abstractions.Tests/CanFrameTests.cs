@@ -688,6 +688,65 @@ public class CanFrameTests
         Assert.AreEqual(0, frame.PayloadLength);
     }
 
+    [TestMethod(DisplayName = "ToPayloadArray返回载荷副本")]
+    public void ToPayloadArray_ClassicFrame_ReturnsIndependentCopy()
+    {
+        var frame = CanFrame.CreateData(StdId, [0xAA, 0xBB, 0xCC]);
+
+        var payload = frame.ToPayloadArray();
+        payload[0] = 0x00;
+
+        Assert.HasCount(3, payload);
+        Assert.AreEqual(0xAA, frame.GetPayloadByte(0));
+        Assert.AreEqual(0xBB, payload[1]);
+        Assert.AreEqual(0xCC, payload[2]);
+    }
+
+    [TestMethod(DisplayName = "ToPayloadArray支持空载荷")]
+    public void ToPayloadArray_EmptyPayload_ReturnsEmptyArray()
+    {
+        var frame = CanFrame.CreateData(StdId, ReadOnlySpan<byte>.Empty);
+
+        var payload = frame.ToPayloadArray();
+
+        Assert.IsEmpty(payload);
+    }
+
+    [TestMethod(DisplayName = "ToPayloadArray支持64字节FD载荷")]
+    public void ToPayloadArray_Fd64Payload_ReturnsExactBytes()
+    {
+        var source = new byte[64];
+        source[0] = 0x10;
+        source[63] = 0x42;
+        var frame = CanFrame.CreateFdData(StdId, source);
+
+        var payload = frame.ToPayloadArray();
+
+        Assert.HasCount(64, payload);
+        Assert.AreEqual(0x10, payload[0]);
+        Assert.AreEqual(0x42, payload[63]);
+    }
+
+    [TestMethod(DisplayName = "ToPayloadHexString返回大写空格分隔HEX")]
+    public void ToPayloadHexString_ClassicFrame_ReturnsUppercaseHex()
+    {
+        var frame = CanFrame.CreateData(StdId, [0x00, 0x0A, 0xFF]);
+
+        var text = frame.ToPayloadHexString();
+
+        Assert.AreEqual("00 0A FF", text);
+    }
+
+    [TestMethod(DisplayName = "ToPayloadHexString空载荷返回空字符串")]
+    public void ToPayloadHexString_EmptyPayload_ReturnsEmptyString()
+    {
+        var frame = CanFrame.CreateData(StdId, ReadOnlySpan<byte>.Empty);
+
+        var text = frame.ToPayloadHexString();
+
+        Assert.AreEqual(string.Empty, text);
+    }
+
     #endregion
 
     #region Allocation Test

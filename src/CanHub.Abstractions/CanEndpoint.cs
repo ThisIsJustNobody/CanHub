@@ -35,6 +35,81 @@ public sealed class CanEndpoint : IEquatable<CanEndpoint>
     }
 
     /// <summary>
+    /// 创建规范化的 CAN 适配器端点。<br/>
+    /// Creates a canonical CAN adapter endpoint.
+    /// </summary>
+    /// <param name="scheme">端点方案。<br/>Endpoint scheme.</param>
+    /// <param name="device">设备标识。<br/>Device identifier.</param>
+    /// <param name="channelIndex">通道索引；未指定时不写入通道查询参数。<br/>Channel index; omitted from the query when null.</param>
+    /// <param name="parameters">额外查询参数；不能包含 channel 或 channelIndex。<br/>Additional query parameters; must not include channel or channelIndex.</param>
+    /// <returns>规范化端点。<br/>The canonical endpoint.</returns>
+    /// <exception cref="CanException">参数无效、包含保留通道参数或重复参数时抛出。<br/>Thrown when parameters are invalid, contain reserved channel keys, or duplicate keys.</exception>
+    public static CanEndpoint Create(
+        string scheme,
+        string device,
+        int? channelIndex = null,
+        IReadOnlyDictionary<string, string>? parameters = null)
+    {
+        if (string.IsNullOrWhiteSpace(scheme))
+            throw new CanException("*", CanErrorCategory.InvalidEndpoint, "端点方案不能为空。");
+        if (string.IsNullOrWhiteSpace(device))
+            throw new CanException("*", CanErrorCategory.InvalidEndpoint, "端点设备不能为空。");
+        if (channelIndex is < 0)
+            throw new CanException("*", CanErrorCategory.InvalidEndpoint, "通道索引必须为非负整数。");
+
+        var copiedParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (parameters is not null)
+        {
+            foreach (var (key, value) in parameters)
+            {
+                if (string.IsNullOrWhiteSpace(key))
+                    throw new CanException("*", CanErrorCategory.InvalidEndpoint, "端点查询参数名不能为空。");
+                if (string.Equals(key, "channel", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, "channelIndex", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new CanException(
+                        "*",
+                        CanErrorCategory.InvalidEndpoint,
+                        $"端点查询参数 '{key}' 是保留参数，请使用 {nameof(channelIndex)}。");
+                }
+                if (!copiedParameters.TryAdd(key, value ?? string.Empty))
+                    throw new CanException("*", CanErrorCategory.InvalidEndpoint, $"端点 URI 包含重复的查询参数: '{key}'");
+            }
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append(scheme.Trim()).Append("://").Append(device.Trim());
+
+        var hasQuery = channelIndex.HasValue || copiedParameters.Count > 0;
+        if (hasQuery)
+            sb.Append('?');
+
+        var first = true;
+        if (channelIndex.HasValue)
+        {
+            sb.Append("channelIndex=").Append(channelIndex.Value);
+            first = false;
+        }
+
+        if (copiedParameters.Count > 0)
+        {
+            var keys = new string[copiedParameters.Count];
+            int idx = 0;
+            foreach (var key in copiedParameters.Keys) keys[idx++] = key;
+            Array.Sort(keys, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var key in keys)
+            {
+                if (!first) sb.Append('&');
+                sb.Append(Uri.EscapeDataString(key)).Append('=').Append(Uri.EscapeDataString(copiedParameters[key]));
+                first = false;
+            }
+        }
+
+        return Parse(sb.ToString());
+    }
+
+    /// <summary>
     /// 将 URI 字符串解析为 <see cref="CanEndpoint"/>。<br/>
     /// Parses a URI string into a <see cref="CanEndpoint"/>.
     /// </summary>

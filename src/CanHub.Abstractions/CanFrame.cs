@@ -191,6 +191,37 @@ public readonly struct CanFrame : IEquatable<CanFrame>
     /// <summary>负载字节数（<see cref="Length"/> 的别名）。<br/>Payload byte count (alias for <see cref="Length"/>).</summary>
     public int PayloadLength => Length;
 
+    /// <summary>将负载复制到新的字节数组。调用此方法会分配数组。<br/>Copy the payload into a new byte array. This method allocates an array.</summary>
+    public byte[] ToPayloadArray()
+    {
+        if (Length == 0)
+            return Array.Empty<byte>();
+
+        var payload = new byte[Length];
+        CopyPayloadTo(payload);
+        return payload;
+    }
+
+    /// <summary>将负载格式化为大写十六进制字符串，字节之间以空格分隔。调用此方法会分配字符串。<br/>Format the payload as an uppercase hex string separated by spaces. This method allocates a string.</summary>
+    public string ToPayloadHexString()
+    {
+        if (Length == 0)
+            return string.Empty;
+
+        return string.Create(Length * 3 - 1, this, static (chars, frame) =>
+        {
+            var pos = 0;
+            for (var i = 0; i < frame.Length; i++)
+            {
+                if (i > 0)
+                    chars[pos++] = ' ';
+
+                frame.GetPayloadByte(i).TryFormat(chars[pos..], out var written, "X2");
+                pos += written;
+            }
+        });
+    }
+
     /// <summary>将负载复制到目标 span。返回写入的字节数。<br/>Copy the payload into the destination span. Returns the number of bytes written.</summary>
     public void CopyPayloadTo(Span<byte> destination)
     {
