@@ -17,6 +17,21 @@ dotnet add package CanHub.Adapter.Zlg
 
 本包面向 Windows，并为支持的运行时标识包含适配器原生资产。ZLG 设备驱动仍需按照 ZLG 官方文档安装。
 
+### 原生运行时布局
+
+消费本包后，ZLG 运行时会复制到应用输出目录下：
+
+```text
+canhub/zlg/x64/zlgcan.dll
+canhub/zlg/x64/kerneldlls/...
+canhub/zlg/x86/zlgcan.dll
+canhub/zlg/x86/kerneldlls/...
+```
+
+包消费构建会按进程/运行时架构只复制 `x64` 或 `x86`。包内 payload 放在 `buildTransitive/native`，不放在 NuGet `runtimes/*/native`，避免 RID 构建同时把 `zlgcan.dll` 放到输出根目录。
+
+`ZlgNativeLoader` 优先加载 `canhub/zlg/<arch>/zlgcan.dll`，并通过 `AddDllDirectory` 注册该目录和 `kerneldlls` 子目录；不会修改 `PATH`。如需手工替换 ZLG 运行时，请替换对应 `canhub/zlg/<arch>` 目录里的文件，并保持 `zlgcan.dll` 与同级 `kerneldlls` 的目录结构。
+
 ## 注册
 
 ```csharp

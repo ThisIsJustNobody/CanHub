@@ -63,16 +63,17 @@ public static class ZlgNativeLoader
     /// </summary>
     public static string FindZlgCanDll()
     {
-        var archFolder = Environment.Is64BitProcess ? "zlgcan_x64" : "zlgcan_x86";
+        var sourceArchFolder = Environment.Is64BitProcess ? "zlgcan_x64" : "zlgcan_x86";
+        var outputArchFolder = Environment.Is64BitProcess ? "x64" : "x86";
         var runtimeFolder = Environment.Is64BitProcess ? "win-x64" : "win-x86";
         foreach (var root in CandidateRoots())
         {
             foreach (var path in new[]
             {
-                Path.Combine(root, "libs", "Zlg", archFolder, "zlgcan.dll"),
+                Path.Combine(root, "canhub", "zlg", outputArchFolder, "zlgcan.dll"),
+                Path.Combine(root, "libs", "Zlg", sourceArchFolder, "zlgcan.dll"),
                 Path.Combine(root, "runtimes", runtimeFolder, "native", "zlgcan.dll"),
                 Path.Combine(root, "CanHubResources", "Zlg", Environment.Is64BitProcess ? "x64" : "x86", "zlgcan.dll"),
-                Path.Combine(root, "zlgcan.dll"),
             })
             {
                 if (File.Exists(path))
@@ -81,7 +82,7 @@ public static class ZlgNativeLoader
         }
 
         throw new DllNotFoundException(
-            $"Could not find zlgcan.dll for {archFolder}. Ensure CanHub.Adapter.Zlg native assets are copied to the output directory.");
+            $"Could not find zlgcan.dll for {sourceArchFolder}. Ensure CanHub.Adapter.Zlg native assets are copied to canhub/zlg/{outputArchFolder} under the output directory.");
     }
 
     private static IEnumerable<string> CandidateRoots()

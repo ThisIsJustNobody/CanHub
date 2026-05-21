@@ -77,6 +77,25 @@ public sealed class ZlgNativeContractTests
         Assert.AreEqual(before, after);
     }
 
+    [TestMethod(DisplayName = "ZLG native loader prefers namespaced output directory")]
+    public void NativeLoader_FindZlgCanDll_PrefersNamespacedOutputDirectory()
+    {
+        var archFolder = Environment.Is64BitProcess ? "x64" : "x86";
+        var expectedPath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "canhub",
+            "zlg",
+            archFolder,
+            "zlgcan.dll"));
+
+        var actualPath = ZlgNativeLoader.FindZlgCanDll();
+
+        Assert.AreEqual(expectedPath, actualPath);
+        Assert.AreNotEqual(
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "zlgcan.dll")),
+            actualPath);
+    }
+
     private static int ToInt32<TEnum>(TEnum value)
         where TEnum : struct, Enum =>
         Convert.ToInt32(value);

@@ -19,15 +19,17 @@
     <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(_CanHubZlgPlatformTarget)' == 'x64'">win-x64</_CanHubZlgNativeRid>
     <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT' and '$(_CanHubZlgHostArchitecture)' == 'x86'">win-x86</_CanHubZlgNativeRid>
     <_CanHubZlgNativeRid Condition="'$(_CanHubZlgNativeRid)' == '' and '$(_CanHubZlgRuntimeIdentifier)' == '' and '$(OS)' == 'Windows_NT' and '$(_CanHubZlgHostArchitecture)' == 'x64'">win-x64</_CanHubZlgNativeRid>
+    <_CanHubZlgNativeArch Condition="'$(_CanHubZlgNativeRid)' == 'win-x86'">x86</_CanHubZlgNativeArch>
+    <_CanHubZlgNativeArch Condition="'$(_CanHubZlgNativeRid)' == 'win-x64'">x64</_CanHubZlgNativeArch>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(_CanHubZlgNativeRid)' != ''">
-    <CanHubZlgNative Include="$(MSBuildThisFileDirectory)..\runtimes\$(_CanHubZlgNativeRid)\native\**\*" />
+    <CanHubZlgNative Include="$(MSBuildThisFileDirectory)native\$(_CanHubZlgNativeRid)\**\*" />
   </ItemGroup>
 
   <Target Name="CopyCanHubZlgNative" AfterTargets="Build" Condition="'@(CanHubZlgNative)' != ''">
     <Copy SourceFiles="@(CanHubZlgNative)"
-          DestinationFiles="@(CanHubZlgNative->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(CanHubZlgNative->'$(OutputPath)canhub\zlg\$(_CanHubZlgNativeArch)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>

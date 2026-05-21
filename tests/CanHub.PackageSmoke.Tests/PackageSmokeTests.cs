@@ -50,6 +50,17 @@ public sealed class PackageSmokeTests
         StringAssert.Contains(result.StandardOutput, "zlg-ok");
     }
 
+    [TestMethod(DisplayName = "ZLG adapter RID build keeps native library tree namespaced")]
+    public async Task ZlgAdapterPackage_RidBuildKeepsNativeLibraryTreeNamespaced()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("ZLG RID smoke test executes a Windows runtime build.");
+
+        var result = await RunFixtureAsync("ZlgConsumer", "zlg-ok", TestContext.CancellationToken, runtimeIdentifier: "win-x64");
+
+        StringAssert.Contains(result.StandardOutput, "zlg-ok");
+    }
+
     [TestMethod(DisplayName = "ZLG adapter nupkg contains native library tree and license")]
     public async Task ZlgAdapterPackage_ContainsExpectedPackageEntries()
     {
@@ -58,11 +69,11 @@ public sealed class PackageSmokeTests
         AssertPackageContains(
             feed,
             "CanHub.Adapter.Zlg",
-            "runtimes/win-x64/native/zlgcan.dll",
-            "runtimes/win-x86/native/zlgcan.dll",
+            "buildTransitive/native/win-x64/zlgcan.dll",
+            "buildTransitive/native/win-x86/zlgcan.dll",
             "licenses/Zlg/zlgcan License.txt",
-            "runtimes/win-x64/native/kerneldlls/ZPS/ZPSCANFD_IMPL.dll",
-            "runtimes/win-x86/native/kerneldlls/ZPS/ZPSCANFD_IMPL.dll");
+            "buildTransitive/native/win-x64/kerneldlls/ZPS/ZPSCANFD_IMPL.dll",
+            "buildTransitive/native/win-x86/kerneldlls/ZPS/ZPSCANFD_IMPL.dll");
     }
 
     [TestMethod(DisplayName = "Vector ASC trace package can be consumed by a user project")]
@@ -90,10 +101,12 @@ public sealed class PackageSmokeTests
     private async Task<CommandResult> RunFixtureAsync(
         string fixtureName,
         string successMarker,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? runtimeIdentifier = null)
     {
         var feed = await EnsurePackageFeedAsync(cancellationToken);
         var projectPath = Path.Combine(feed.RepositoryRoot, "tests", "CanHub.PackageSmoke.Tests", "Fixtures", fixtureName, $"{fixtureName}.csproj");
+        CleanFixtureBuildOutput(Path.GetDirectoryName(projectPath)!);
 
         await RunDotnetAsync(
             feed.RepositoryRoot,
@@ -103,6 +116,7 @@ public sealed class PackageSmokeTests
                 "--configfile",
                 feed.NuGetConfigPath,
                 "--nologo",
+                .. RuntimeArguments(runtimeIdentifier),
                 .. feed.MsBuildProperties,
             ],
             feed.GlobalPackagesPath,
@@ -118,6 +132,7 @@ public sealed class PackageSmokeTests
                 "Release",
                 "--no-restore",
                 "--nologo",
+                .. RuntimeArguments(runtimeIdentifier),
                 .. feed.MsBuildProperties,
             ],
             feed.GlobalPackagesPath,
@@ -125,6 +140,25 @@ public sealed class PackageSmokeTests
 
         StringAssert.Contains(result.StandardOutput, successMarker);
         return result;
+    }
+
+    private static void CleanFixtureBuildOutput(string projectDirectory)
+    {
+        foreach (var directoryName in new[] { "bin", "obj" })
+        {
+            var path = Path.Combine(projectDirectory, directoryName);
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private static IEnumerable<string> RuntimeArguments(string? runtimeIdentifier)
+    {
+        if (!string.IsNullOrWhiteSpace(runtimeIdentifier))
+        {
+            yield return "--runtime";
+            yield return runtimeIdentifier;
+        }
     }
 
     private static async Task<PackageFeed> EnsurePackageFeedAsync(CancellationToken cancellationToken)
