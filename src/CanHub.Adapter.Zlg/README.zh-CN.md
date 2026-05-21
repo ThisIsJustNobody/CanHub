@@ -54,7 +54,13 @@ zlg://{deviceType}?deviceIndex={index}&channelIndex={channelIndex}
 zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
-首个支持的设备系列是 `USBCANFD_200U`。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备索引和通道编号以 ZLG 运行时为准。
+按固定配置打开设备时，优先使用 `ZlgEndpoint`：
+
+```csharp
+CanEndpoint endpoint = ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0);
+```
+
+首个支持的设备系列是 `USBCANFD_200U`。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备索引和通道编号以 ZLG 运行时为准。若通道来自 `ScanAsync`，仍优先使用扫描结果里的 `CanChannelInfo.Endpoint` 或 `CanChannelInfo.CanonicalEndpoint`，不要重新手写拼接。
 
 ## 使用示例
 
@@ -62,7 +68,7 @@ zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
+    ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0),
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```

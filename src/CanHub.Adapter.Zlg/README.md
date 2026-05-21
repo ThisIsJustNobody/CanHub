@@ -54,7 +54,13 @@ Example:
 zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
-The first supported device family is `USBCANFD_200U`. The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device index and channel numbering follow the ZLG runtime.
+Prefer `ZlgEndpoint` when opening a fixed device from configuration:
+
+```csharp
+CanEndpoint endpoint = ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0);
+```
+
+The first supported device family is `USBCANFD_200U`. The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device index and channel numbering follow the ZLG runtime. If the channel came from `ScanAsync`, prefer the scanned `CanChannelInfo.Endpoint` or `CanChannelInfo.CanonicalEndpoint` instead of rebuilding it manually.
 
 ## Usage
 
@@ -62,7 +68,7 @@ The first supported device family is `USBCANFD_200U`. The adapter accepts legacy
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
+    ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0),
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```

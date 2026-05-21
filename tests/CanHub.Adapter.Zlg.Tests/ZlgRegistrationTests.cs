@@ -7,6 +7,34 @@ namespace CanHub.Adapter.Zlg.Tests;
 [TestClass]
 public sealed class ZlgRegistrationTests
 {
+    [TestMethod(DisplayName = "ZlgEndpoint Create returns canonical USBCANFD endpoint")]
+    public void ZlgEndpoint_Create_ReturnsCanonicalEndpoint()
+    {
+        var endpoint = ZlgEndpoint.Create("USBCANFD_200U", deviceIndex: 0, channelIndex: 1);
+
+        Assert.AreEqual("zlg", endpoint.Scheme);
+        Assert.AreEqual("USBCANFD_200U", endpoint.Device);
+        Assert.AreEqual(1, endpoint.ChannelIndex);
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=1&deviceIndex=0", endpoint.ToString());
+    }
+
+    [TestMethod(DisplayName = "ZlgEndpoint UsbCanFd200U returns canonical scanned format")]
+    public void ZlgEndpoint_UsbCanFd200U_ReturnsCanonicalScannedFormat()
+    {
+        var endpoint = ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0);
+
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=0&deviceIndex=0", endpoint.ToString());
+    }
+
+    [TestMethod(DisplayName = "ZlgEndpoint rejects negative indexes")]
+    public void ZlgEndpoint_NegativeIndex_ThrowsCanException()
+    {
+        var ex = Assert.ThrowsExactly<CanException>(
+            () => ZlgEndpoint.Create("USBCANFD_200U", deviceIndex: -1, channelIndex: 0));
+
+        Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+    }
+
     [TestMethod(DisplayName = "ZLG registration extensions add adapter to registry and DI")]
     public void RegistrationExtensions_RegisterZlgAdapter()
     {
