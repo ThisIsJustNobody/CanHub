@@ -23,9 +23,11 @@ RequireFile("CanHub.Adapter.Zlg.dll");
 
 if (OperatingSystem.IsWindows())
 {
-    RequireFile("zlgcan.dll");
-    RequireFile(Path.Combine("kerneldlls", "ZPSCANFD.dll"));
-    RequireFile(Path.Combine("kerneldlls", "ZPS", "ZPSCANFD_IMPL.dll"));
+    var archFolder = Environment.Is64BitProcess ? "x64" : "x86";
+    RequireFile(Path.Combine("canhub", "zlg", archFolder, "zlgcan.dll"));
+    RequireFile(Path.Combine("canhub", "zlg", archFolder, "kerneldlls", "ZPSCANFD.dll"));
+    RequireFile(Path.Combine("canhub", "zlg", archFolder, "kerneldlls", "ZPS", "ZPSCANFD_IMPL.dll"));
+    RequireMissingFile("zlgcan.dll");
 }
 
 Console.WriteLine("zlg-ok");
@@ -41,4 +43,11 @@ static void RequireFile(string relativePath)
     var path = Path.Combine(AppContext.BaseDirectory, relativePath);
     if (!File.Exists(path))
         throw new FileNotFoundException($"Expected file was not copied to output: {relativePath}", path);
+}
+
+static void RequireMissingFile(string relativePath)
+{
+    var path = Path.Combine(AppContext.BaseDirectory, relativePath);
+    if (File.Exists(path))
+        throw new InvalidOperationException($"Expected file to stay out of output root: {relativePath}");
 }

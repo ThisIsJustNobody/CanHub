@@ -16,7 +16,7 @@ public sealed class ZlgNativeAssetTargetsTests
         string platformTarget,
         string expectedMarker)
     {
-        var copiedMarker = CopyNativeMarker(runtimeIdentifier, platformTarget);
+        var copiedMarker = CopyNativeMarker(runtimeIdentifier, platformTarget, expectedMarker);
 
         Assert.AreEqual(expectedMarker, copiedMarker);
     }
@@ -31,12 +31,12 @@ public sealed class ZlgNativeAssetTargetsTests
         if (!OperatingSystem.IsWindows())
             Assert.Inconclusive("PlatformTarget fallback is host-build behavior for Windows.");
 
-        var copiedMarker = CopyNativeMarker(runtimeIdentifier: null, platformTarget);
+        var copiedMarker = CopyNativeMarker(runtimeIdentifier: null, platformTarget, expectedMarker);
 
         Assert.AreEqual(expectedMarker, copiedMarker);
     }
 
-    private static string CopyNativeMarker(string? runtimeIdentifier, string platformTarget)
+    private static string CopyNativeMarker(string? runtimeIdentifier, string platformTarget, string expectedMarker)
     {
         var workspace = Path.Combine(
             Path.GetTempPath(),
@@ -68,8 +68,13 @@ public sealed class ZlgNativeAssetTargetsTests
             var result = RunMsBuild(projectPath, runtimeIdentifier, platformTarget);
             Assert.AreEqual(0, result.ExitCode, result.Output);
 
-            var copiedMarker = Path.Combine(outputPath, "zlgcan.dll");
+            var archFolder = expectedMarker;
+            var copiedMarker = Path.Combine(outputPath, "canhub", "zlg", archFolder, "zlgcan.dll");
             Assert.IsTrue(File.Exists(copiedMarker), result.Output);
+            Assert.IsFalse(File.Exists(Path.Combine(outputPath, "zlgcan.dll")), result.Output);
+            Assert.IsTrue(
+                File.Exists(Path.Combine(outputPath, "canhub", "zlg", archFolder, "kerneldlls", "ZPS", "ZPSCANFD_IMPL.dll")),
+                result.Output);
             return File.ReadAllText(copiedMarker);
         }
         finally
@@ -81,9 +86,12 @@ public sealed class ZlgNativeAssetTargetsTests
 
     private static void WriteNativeMarker(string packageRoot, string rid, string marker)
     {
-        var nativeDirectory = Path.Combine(packageRoot, "runtimes", rid, "native");
+        var nativeDirectory = Path.Combine(packageRoot, "buildTransitive", "native", rid);
         Directory.CreateDirectory(nativeDirectory);
         File.WriteAllText(Path.Combine(nativeDirectory, "zlgcan.dll"), marker);
+        var kernelDirectory = Path.Combine(nativeDirectory, "kerneldlls", "ZPS");
+        Directory.CreateDirectory(kernelDirectory);
+        File.WriteAllText(Path.Combine(kernelDirectory, "ZPSCANFD_IMPL.dll"), marker);
     }
 
     private static (int ExitCode, string Output) RunMsBuild(

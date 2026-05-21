@@ -17,6 +17,21 @@ dotnet add package CanHub.Adapter.Zlg
 
 The package targets Windows and includes adapter native assets for supported runtime identifiers. The ZLG device driver must be installed according to ZLG's documentation.
 
+### Native Runtime Layout
+
+When this package is consumed, the ZLG runtime is copied under the application output directory as:
+
+```text
+canhub/zlg/x64/zlgcan.dll
+canhub/zlg/x64/kerneldlls/...
+canhub/zlg/x86/zlgcan.dll
+canhub/zlg/x86/kerneldlls/...
+```
+
+Package builds select the process/runtime architecture and copy only `x64` or `x86` for consumer projects. The package stores the payload under `buildTransitive/native` instead of NuGet `runtimes/*/native` so RID builds do not also place `zlgcan.dll` in the output root.
+
+`ZlgNativeLoader` prefers `canhub/zlg/<arch>/zlgcan.dll`, registers that directory plus `kerneldlls` subdirectories with `AddDllDirectory`, and does not mutate `PATH`. To override the bundled runtime manually, replace the files in the corresponding `canhub/zlg/<arch>` directory while preserving the `zlgcan.dll` + sibling `kerneldlls` layout.
+
 ## Register
 
 ```csharp
