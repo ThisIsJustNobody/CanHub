@@ -15,6 +15,15 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
     private static readonly ConcurrentDictionary<VectorChannelKey, VectorChannelLeaseEntry> s_channels = new();
     private static readonly SemaphoreSlim s_channelGate = new(1, 1);
 
+    /// <summary>
+    /// 创建 Vector 适配器提供者，并注册 Vector 原生 DLL 解析器。<br/>
+    /// Creates the Vector adapter provider and registers the Vector native DLL resolver.
+    /// </summary>
+    public VectorAdapterProvider()
+    {
+        VectorNativeLoader.EnsureRegistered();
+    }
+
     /// <inheritdoc />
     public string AdapterId => "vector";
 

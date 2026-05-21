@@ -17,6 +17,16 @@ dotnet add package CanHub.Adapter.Vector
 
 The package targets Windows and includes managed/native assets needed by the adapter. The Vector driver stack must still be installed according to Vector's documentation, and the device must be visible to the XL Driver runtime.
 
+Runtime layout:
+
+```text
+vxlapi_NET.dll
+canhub/vector/x64/vxlapi64.dll
+canhub/vector/x86/vxlapi.dll
+```
+
+The managed wrapper `vxlapi_NET.dll` remains in the application output root so advanced consumers can still reference `vxlapi_NET` directly. CanHub resolves the active-process native DLL from `canhub/vector/<arch>` and does not modify `PATH`. To manually replace the bundled Vector native runtime, replace the file in the matching architecture folder.
+
 ## Register
 
 ```csharp

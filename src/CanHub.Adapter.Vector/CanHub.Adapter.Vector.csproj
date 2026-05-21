@@ -67,14 +67,16 @@
     <None Include="libs\Vector\vxlapi_NET.dll"
           Pack="true" PackagePath="lib\net10.0\vxlapi_NET.dll" />
   </ItemGroup>
-  <!-- 原生 DLL：本地构建复制 + 打包到 runtimes/ -->
+  <!-- 原生 DLL：本地构建复制到命名空间目录 + 打包到 buildTransitive/native/ -->
   <ItemGroup>
-    <Content Include="libs\Vector\vxlapi64.dll" Link="vxlapi64.dll"
+    <Content Include="libs\Vector\vxlapi64.dll"
              CopyToOutputDirectory="PreserveNewest"
-             Pack="true" PackagePath="runtimes\win-x64\native\vxlapi64.dll" />
-    <Content Include="libs\Vector\vxlapi.dll" Link="vxlapi.dll"
+             TargetPath="canhub\vector\x64\vxlapi64.dll"
+             Pack="true" PackagePath="buildTransitive\native\win-x64\vxlapi64.dll" />
+    <Content Include="libs\Vector\vxlapi.dll"
              CopyToOutputDirectory="PreserveNewest"
-             Pack="true" PackagePath="runtimes\win-x86\native\vxlapi.dll" />
+             TargetPath="canhub\vector\x86\vxlapi.dll"
+             Pack="true" PackagePath="buildTransitive\native\win-x86\vxlapi.dll" />
   </ItemGroup>
   <!-- MSBuild targets：消费端自动复制原生 DLL 到输出目录 -->
   <ItemGroup>

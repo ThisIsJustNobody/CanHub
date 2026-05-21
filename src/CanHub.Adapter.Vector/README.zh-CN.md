@@ -17,6 +17,16 @@ dotnet add package CanHub.Adapter.Vector
 
 本包面向 Windows，并包含适配器所需的托管/原生资产。Vector 驱动栈仍需按照 Vector 官方文档安装，设备也必须能被 XL Driver 运行时识别。
 
+运行时目录布局：
+
+```text
+vxlapi_NET.dll
+canhub/vector/x64/vxlapi64.dll
+canhub/vector/x86/vxlapi.dll
+```
+
+托管 wrapper `vxlapi_NET.dll` 仍保留在应用输出根目录，方便高级用户直接引用 `vxlapi_NET`。CanHub 会从 `canhub/vector/<arch>` 解析当前进程架构对应的原生 DLL，且不会修改 `PATH`。如需人工替换随包携带的 Vector 原生运行时，请替换匹配架构目录中的文件。
+
 ## 注册
 
 ```csharp

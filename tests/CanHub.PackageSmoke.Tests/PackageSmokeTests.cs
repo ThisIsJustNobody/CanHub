@@ -28,6 +28,17 @@ public sealed class PackageSmokeTests
         StringAssert.Contains(result.StandardOutput, "vector-ok");
     }
 
+    [TestMethod(DisplayName = "Vector adapter package publishes namespaced native library")]
+    public async Task VectorAdapterPackage_PublishesNamespacedNativeLibrary()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("Vector publish smoke test executes a Windows runtime publish.");
+
+        var result = await PublishAndRunFixtureAsync("VectorConsumer", "vector-ok", TestContext.CancellationToken);
+
+        StringAssert.Contains(result.StandardOutput, "vector-ok");
+    }
+
     [TestMethod(DisplayName = "Vector adapter nupkg contains wrapper and native assets")]
     public async Task VectorAdapterPackage_ContainsExpectedPackageEntries()
     {
@@ -38,8 +49,8 @@ public sealed class PackageSmokeTests
             "CanHub.Adapter.Vector",
             "THIRD-PARTY-NOTICES.md",
             "lib/net10.0/vxlapi_NET.dll",
-            "runtimes/win-x64/native/vxlapi64.dll",
-            "runtimes/win-x86/native/vxlapi.dll");
+            "buildTransitive/native/win-x64/vxlapi64.dll",
+            "buildTransitive/native/win-x86/vxlapi.dll");
     }
 
     [TestMethod(DisplayName = "ZLG adapter package copies native library tree")]
@@ -136,6 +147,58 @@ public sealed class PackageSmokeTests
                 .. feed.MsBuildProperties,
             ],
             feed.GlobalPackagesPath,
+            cancellationToken);
+
+        StringAssert.Contains(result.StandardOutput, successMarker);
+        return result;
+    }
+
+    private async Task<CommandResult> PublishAndRunFixtureAsync(
+        string fixtureName,
+        string successMarker,
+        CancellationToken cancellationToken,
+        string? runtimeIdentifier = null)
+    {
+        var feed = await EnsurePackageFeedAsync(cancellationToken);
+        var projectPath = Path.Combine(feed.RepositoryRoot, "tests", "CanHub.PackageSmoke.Tests", "Fixtures", fixtureName, $"{fixtureName}.csproj");
+        CleanFixtureBuildOutput(Path.GetDirectoryName(projectPath)!);
+
+        var publishPath = Path.Combine(Path.GetTempPath(), "CanHub.PackageSmoke.Publish", Guid.NewGuid().ToString("N"));
+
+        await RunDotnetAsync(
+            feed.RepositoryRoot,
+            [
+                "restore",
+                projectPath,
+                "--configfile",
+                feed.NuGetConfigPath,
+                "--nologo",
+                .. RuntimeArguments(runtimeIdentifier),
+                .. feed.MsBuildProperties,
+            ],
+            feed.GlobalPackagesPath,
+            cancellationToken);
+
+        await RunDotnetAsync(
+            feed.RepositoryRoot,
+            [
+                "publish",
+                projectPath,
+                "--configuration",
+                "Release",
+                "--no-restore",
+                "--output",
+                publishPath,
+                "--nologo",
+                .. RuntimeArguments(runtimeIdentifier),
+                .. feed.MsBuildProperties,
+            ],
+            feed.GlobalPackagesPath,
+            cancellationToken);
+
+        var result = await RunExecutableAsync(
+            Path.Combine(publishPath, $"{fixtureName}.exe"),
+            publishPath,
             cancellationToken);
 
         StringAssert.Contains(result.StandardOutput, successMarker);
@@ -321,6 +384,57 @@ public sealed class PackageSmokeTests
         {
             Assert.Fail(
                 $"dotnet {FormatArguments(arguments)} failed with exit code {result.ExitCode}.{Environment.NewLine}" +
+                $"STDOUT:{Environment.NewLine}{result.StandardOutput}{Environment.NewLine}" +
+                $"STDERR:{Environment.NewLine}{result.StandardError}");
+        }
+
+        return result;
+    }
+
+    private static async Task<CommandResult> RunExecutableAsync(
+        string executablePath,
+        string workingDirectory,
+        CancellationToken cancellationToken)
+    {
+        var startInfo = new ProcessStartInfo(executablePath)
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"Failed to start executable: {executablePath}");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var standardErrorTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        string standardOutput;
+        string standardError;
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+            standardOutput = await standardOutputTask;
+            standardError = await standardErrorTask;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            TryKill(process);
+            Assert.Fail($"{executablePath} timed out.");
+            throw;
+        }
+
+        var result = new CommandResult(
+            process.ExitCode,
+            standardOutput,
+            standardError);
+
+        if (result.ExitCode != 0)
+        {
+            Assert.Fail(
+                $"{executablePath} failed with exit code {result.ExitCode}.{Environment.NewLine}" +
                 $"STDOUT:{Environment.NewLine}{result.StandardOutput}{Environment.NewLine}" +
                 $"STDERR:{Environment.NewLine}{result.StandardError}");
         }
