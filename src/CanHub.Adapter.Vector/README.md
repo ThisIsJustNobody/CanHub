@@ -47,10 +47,16 @@ Examples:
 
 ```text
 vector://VN1630A?deviceIndex=0&channelIndex=0
-vector://VN1640A?deviceIndex=0&channelIndex=1&appName=CanHub
+vector://VN1640A?deviceIndex=0&channelIndex=1
 ```
 
-The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device names and channel numbering follow the information exposed by the Vector XL Driver.
+Prefer `VectorEndpoint` when opening a fixed device from configuration:
+
+```csharp
+CanEndpoint endpoint = VectorEndpoint.Create("VN1630A", deviceIndex: 0, channelIndex: 0);
+```
+
+The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device names and channel numbering follow the information exposed by the Vector XL Driver. If the channel came from `ScanAsync`, prefer the scanned `CanChannelInfo.Endpoint` or `CanChannelInfo.CanonicalEndpoint` instead of rebuilding it manually. Behavior options such as the Vector application name belong in `CanOpenOptions.NativeOptions`, not the endpoint.
 
 ## Usage
 
@@ -58,7 +64,7 @@ The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "vector://VN1630A?deviceIndex=0&channelIndex=0",
+    VectorEndpoint.Create("VN1630A", deviceIndex: 0, channelIndex: 0),
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```

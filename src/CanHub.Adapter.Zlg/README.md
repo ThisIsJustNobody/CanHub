@@ -54,7 +54,13 @@ Example:
 zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
-The first supported device family is `USBCANFD_200U`. The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device index and channel numbering follow the ZLG runtime.
+Prefer `ZlgEndpoint` when opening a fixed device from configuration:
+
+```csharp
+CanEndpoint endpoint = ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0);
+```
+
+The first supported device family is `USBCANFD_200U`. The adapter accepts legacy `channel` as a compatibility alias for `channelIndex`. Device index and channel numbering follow the ZLG runtime. If the channel came from `ScanAsync`, prefer the scanned `CanChannelInfo.Endpoint` or `CanChannelInfo.CanonicalEndpoint` instead of rebuilding it manually.
 
 ## Usage
 
@@ -62,12 +68,28 @@ The first supported device family is `USBCANFD_200U`. The adapter accepts legacy
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
+    ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0),
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```
 
 Use `CanOpenOptions.BusParameters` for CAN FD when the target channel is configured for CAN FD, for example `CanBusParameters.Fd500k2M`.
+
+## Diagnostics
+
+Use `ZlgDiagnostics.CheckRuntimeAsync` before opening a channel when you want to verify the Windows platform, native runtime files, DLL loading, and device scan path:
+
+```csharp
+var report = await ZlgDiagnostics.CheckRuntimeAsync(ct: CancellationToken.None);
+
+if (!report.IsReady)
+{
+    foreach (var diagnostic in report.Diagnostics)
+        Console.WriteLine($"{diagnostic.Category}: {diagnostic.Message} {diagnostic.Hint}");
+}
+```
+
+The diagnostic check loads the ZLG native runtime and scans devices, but it does not open a specific channel. `report.HasOpenableChannel` indicates whether scanning found at least one channel that CanHub can try to open.
 
 ## Recovery
 
@@ -81,14 +103,11 @@ await using var bus = await registry.OpenAsync(
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,
-        Recovery = CanRecoveryOptions.ReopenWithBackoff(
-            triggers: CanRecoveryTrigger.BusOff |
-                      CanRecoveryTrigger.ErrorPassive |
-                      CanRecoveryTrigger.NativeReceiveFault)
+        Recovery = ZlgRecoveryProfiles.BusFaultBackoff
     });
 ```
 
-`ResetOnFault` performs one close/reopen attempt. `ReopenWithBackoff` retries up to the configured attempt limit. Generic ZLG bus error objects, such as ACK and bit errors, can be recovered by enabling `CanRecoveryTrigger.NativeReceiveFault`.
+`ZlgRecoveryProfiles.Disabled` is the default no-reopen policy. `ZlgRecoveryProfiles.BusFaultBackoff` covers common ZLG bus/native receive/transmit faults with a 500ms initial delay and three attempts. `ZlgRecoveryProfiles.ConservativeBench` waits longer and allows more attempts for bench setups. You can still use `CanRecoveryOptions.ResetOnFault` or `CanRecoveryOptions.ReopenWithBackoff` directly when you need custom triggers or delays.
 
 Observed on `USBCANFD_200U`: after error injection or fast close/reopen cycles, the native driver can keep transient state briefly after `ZCAN_ResetCAN`/`ZCAN_CloseDevice` has returned. Direct test runs may hit `ZCAN_StartCAN Error (0)`, while debugger-paced runs or added delay avoid it. The ZLG adapter therefore keeps a 500ms native-close settle window before automatic recovery reopen: caller-provided `RestartDelay` values above 500ms are honored, while smaller values, including `TimeSpan.Zero`, are raised to 500ms. If `ZCAN_StartCAN` returns `Error (0)`, the adapter resets the channel, waits 500ms, and retries the start up to six attempts; this covers both initial open and recovery reopen.
 

@@ -45,10 +45,13 @@ var fd = CanFrame.CreateFdData(
     bitrateSwitch: true);
 
 Span<byte> buffer = stackalloc byte[64];
-var length = fd.CopyPayloadTo(buffer);
+fd.CopyPayloadTo(buffer);
+
+byte[] payload = fd.ToPayloadArray();
+string hex = fd.ToPayloadHexString();
 ```
 
-读取载荷时优先使用 `CopyPayloadTo(Span<byte>)` 或 `TryCopyPayloadTo`，避免在外部保存可变数组。
+对分配敏感的路径优先使用 `CopyPayloadTo(Span<byte>)` 或 `TryCopyPayloadTo`。诊断应用或 UI 代码可以使用 `ToPayloadArray()` 和 `ToPayloadHexString()`，这两个 helper 会显式分配。
 
 ## 发送契约
 

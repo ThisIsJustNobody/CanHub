@@ -212,6 +212,51 @@ public sealed class CanHubRegistryTests
         Assert.AreEqual(CanErrorCategory.AdapterNotFound, ex.Category);
     }
 
+    [TestMethod(DisplayName = "CanEndpoint重载按方案打开并保留端点实例")]
+    public async Task OpenAsync_CanEndpoint_RoutesBySchemeAndPreservesEndpoint()
+    {
+        var registry = CanHubRegistry.CreateDefault();
+        var provider = new FakeAdapterProvider("fake1", "Fake Adapter", ["usb"]);
+        registry.AddAdapter(provider);
+        var endpoint = CanEndpoint.Create("usb", "device1", channelIndex: 0);
+        var openOptions = new CanOpenOptions();
+
+        var bus = await registry.OpenAsync(endpoint, openOptions, TestContext.CancellationToken);
+
+        Assert.IsNotNull(bus);
+        Assert.IsNotNull(provider.LastOpenedContext);
+        Assert.AreSame(endpoint, provider.LastOpenedContext.Endpoint);
+        Assert.AreSame(openOptions, provider.LastOpenedContext.Options);
+    }
+
+    [TestMethod(DisplayName = "CanEndpoint无选项重载使用默认打开选项")]
+    public async Task OpenAsync_CanEndpointWithoutOptions_UsesDefaultOptions()
+    {
+        var registry = CanHubRegistry.CreateDefault();
+        var provider = new FakeAdapterProvider("fake1", "Fake Adapter", ["usb"]);
+        registry.AddAdapter(provider);
+        var endpoint = CanEndpoint.Create("usb", "device1", channelIndex: 0);
+
+        var bus = await registry.OpenAsync(endpoint, TestContext.CancellationToken);
+
+        Assert.IsNotNull(bus);
+        Assert.IsNotNull(provider.LastOpenedContext);
+        Assert.AreSame(endpoint, provider.LastOpenedContext.Endpoint);
+        Assert.AreEqual(CanBusParameters.Classic500k, provider.LastOpenedContext.Options.BusParameters);
+    }
+
+    [TestMethod(DisplayName = "CanEndpoint重载未知方案提前失败")]
+    public async Task OpenAsync_CanEndpointUnknownScheme_Throws()
+    {
+        var registry = CanHubRegistry.CreateDefault();
+        var endpoint = CanEndpoint.Create("usb", "device1");
+
+        var ex = await Assert.ThrowsExactlyAsync<CanException>(
+            async () => await registry.OpenAsync(endpoint, new CanOpenOptions(), TestContext.CancellationToken));
+
+        Assert.AreEqual(CanErrorCategory.AdapterNotFound, ex.Category);
+    }
+
     [TestMethod(DisplayName = "配置回调传递原生选项")]
     public async Task OpenAsync_WithConfigure_PassesNativeOptions()
     {

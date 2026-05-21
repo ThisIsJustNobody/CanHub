@@ -54,7 +54,13 @@ zlg://{deviceType}?deviceIndex={index}&channelIndex={channelIndex}
 zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 ```
 
-首个支持的设备系列是 `USBCANFD_200U`。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备索引和通道编号以 ZLG 运行时为准。
+按固定配置打开设备时，优先使用 `ZlgEndpoint`：
+
+```csharp
+CanEndpoint endpoint = ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0);
+```
+
+首个支持的设备系列是 `USBCANFD_200U`。适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备索引和通道编号以 ZLG 运行时为准。若通道来自 `ScanAsync`，仍优先使用扫描结果里的 `CanChannelInfo.Endpoint` 或 `CanChannelInfo.CanonicalEndpoint`，不要重新手写拼接。
 
 ## 使用示例
 
@@ -62,12 +68,28 @@ zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "zlg://USBCANFD_200U?deviceIndex=0&channelIndex=0",
+    ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0),
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```
 
 目标通道配置为 CAN FD 时，可通过 `CanOpenOptions.BusParameters` 传入 CAN FD 设置，例如 `CanBusParameters.Fd500k2M`。
+
+## 诊断
+
+打开通道前，可以用 `ZlgDiagnostics.CheckRuntimeAsync` 检查 Windows 平台、原生运行时文件、DLL 加载和设备扫描链路：
+
+```csharp
+var report = await ZlgDiagnostics.CheckRuntimeAsync(ct: CancellationToken.None);
+
+if (!report.IsReady)
+{
+    foreach (var diagnostic in report.Diagnostics)
+        Console.WriteLine($"{diagnostic.Category}: {diagnostic.Message} {diagnostic.Hint}");
+}
+```
+
+该诊断会加载 ZLG 原生运行时并扫描设备，但不会打开具体通道。`report.HasOpenableChannel` 表示扫描结果中是否存在 CanHub 可尝试打开的通道。
 
 ## 自动恢复
 
@@ -81,14 +103,11 @@ await using var bus = await registry.OpenAsync(
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,
-        Recovery = CanRecoveryOptions.ReopenWithBackoff(
-            triggers: CanRecoveryTrigger.BusOff |
-                      CanRecoveryTrigger.ErrorPassive |
-                      CanRecoveryTrigger.NativeReceiveFault)
+        Recovery = ZlgRecoveryProfiles.BusFaultBackoff
     });
 ```
 
-`ResetOnFault` 只尝试一次关闭/重开；`ReopenWithBackoff` 会按配置的次数和退避策略重试。ZLG 的 ACK 错误、位错误等通用总线错误对象可通过 `CanRecoveryTrigger.NativeReceiveFault` 触发恢复。
+`ZlgRecoveryProfiles.Disabled` 是默认的不重开策略。`ZlgRecoveryProfiles.BusFaultBackoff` 覆盖常见 ZLG 总线、原生接收和原生发送故障，初始等待 500ms，最多尝试 3 次。`ZlgRecoveryProfiles.ConservativeBench` 等待更久、尝试次数更多，适合台架环境。需要自定义触发条件或延迟时，仍可直接使用 `CanRecoveryOptions.ResetOnFault` 或 `CanRecoveryOptions.ReopenWithBackoff`。
 
 实测 `USBCANFD_200U` 在错误注入或快速关闭/重开后，`ZCAN_ResetCAN`/`ZCAN_CloseDevice` 返回后驱动内部状态仍可能短暂残留；直接运行测试可能遇到 `ZCAN_StartCAN Error(0)`，而调试模式或加入等待后不复现。因此 ZLG 适配器在自动恢复重开前保留 500ms 的原生关闭稳定窗口：调用方配置的 `RestartDelay` 大于 500ms 时按调用方配置执行，小于 500ms（包括 `TimeSpan.Zero`）时按 500ms 执行。同时，`ZCAN_StartCAN` 若返回 `Error(0)`，适配器会先 `ZCAN_ResetCAN`，再等待 500ms 后重试启动，最多 6 次；该重试覆盖初次打开和恢复重开。
 

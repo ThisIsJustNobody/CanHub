@@ -45,10 +45,13 @@ var fd = CanFrame.CreateFdData(
     bitrateSwitch: true);
 
 Span<byte> buffer = stackalloc byte[64];
-var length = fd.CopyPayloadTo(buffer);
+fd.CopyPayloadTo(buffer);
+
+byte[] payload = fd.ToPayloadArray();
+string hex = fd.ToPayloadHexString();
 ```
 
-Use `CopyPayloadTo(Span<byte>)` or `TryCopyPayloadTo` rather than storing mutable payload arrays.
+Use `CopyPayloadTo(Span<byte>)` or `TryCopyPayloadTo` for allocation-conscious code. `ToPayloadArray()` and `ToPayloadHexString()` are convenience helpers for diagnostics and UI code where explicit allocation is acceptable.
 
 ## Transmission Contract
 

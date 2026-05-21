@@ -47,10 +47,16 @@ vector://{deviceName}?deviceIndex={index}&channelIndex={channelIndex}
 
 ```text
 vector://VN1630A?deviceIndex=0&channelIndex=0
-vector://VN1640A?deviceIndex=0&channelIndex=1&appName=CanHub
+vector://VN1640A?deviceIndex=0&channelIndex=1
 ```
 
-适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备名称和通道编号以 Vector XL Driver 暴露的信息为准。
+按固定配置打开设备时，优先使用 `VectorEndpoint`：
+
+```csharp
+CanEndpoint endpoint = VectorEndpoint.Create("VN1630A", deviceIndex: 0, channelIndex: 0);
+```
+
+适配器接受旧 `channel` 参数作为 `channelIndex` 的兼容别名。设备名称和通道编号以 Vector XL Driver 暴露的信息为准。若通道来自 `ScanAsync`，仍优先使用扫描结果里的 `CanChannelInfo.Endpoint` 或 `CanChannelInfo.CanonicalEndpoint`，不要重新手写拼接。Vector application name 等行为配置属于 `CanOpenOptions.NativeOptions`，不属于 endpoint。
 
 ## 使用示例
 
@@ -58,7 +64,7 @@ vector://VN1640A?deviceIndex=0&channelIndex=1&appName=CanHub
 var scan = await registry.ScanAsync(new ScanOptions(), CancellationToken.None);
 
 await using var bus = await registry.OpenAsync(
-    "vector://VN1630A?deviceIndex=0&channelIndex=0",
+    VectorEndpoint.Create("VN1630A", deviceIndex: 0, channelIndex: 0),
     new CanOpenOptions { BusParameters = CanBusParameters.Classic500k },
     CancellationToken.None);
 ```

@@ -7,6 +7,78 @@ namespace CanHub.Adapter.Zlg.Tests;
 [TestClass]
 public sealed class ZlgRegistrationTests
 {
+    [TestMethod(DisplayName = "ZlgEndpoint Create returns canonical USBCANFD endpoint")]
+    public void ZlgEndpoint_Create_ReturnsCanonicalEndpoint()
+    {
+        var endpoint = ZlgEndpoint.Create("USBCANFD_200U", deviceIndex: 0, channelIndex: 1);
+
+        Assert.AreEqual("zlg", endpoint.Scheme);
+        Assert.AreEqual("USBCANFD_200U", endpoint.Device);
+        Assert.AreEqual(1, endpoint.ChannelIndex);
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=1&deviceIndex=0", endpoint.ToString());
+    }
+
+    [TestMethod(DisplayName = "ZlgEndpoint UsbCanFd200U returns canonical scanned format")]
+    public void ZlgEndpoint_UsbCanFd200U_ReturnsCanonicalScannedFormat()
+    {
+        var endpoint = ZlgEndpoint.UsbCanFd200U(deviceIndex: 0, channelIndex: 0);
+
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=0&deviceIndex=0", endpoint.ToString());
+    }
+
+    [TestMethod(DisplayName = "ZlgEndpoint rejects negative indexes")]
+    public void ZlgEndpoint_NegativeIndex_ThrowsCanException()
+    {
+        var ex = Assert.ThrowsExactly<CanException>(
+            () => ZlgEndpoint.Create("USBCANFD_200U", deviceIndex: -1, channelIndex: 0));
+
+        Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+    }
+
+    [TestMethod(DisplayName = "ZlgRecoveryProfiles Disabled returns shared disabled policy")]
+    public void ZlgRecoveryProfiles_Disabled_ReturnsSharedPolicy()
+    {
+        Assert.AreSame(CanRecoveryOptions.Disabled, ZlgRecoveryProfiles.Disabled);
+    }
+
+    [TestMethod(DisplayName = "ZlgRecoveryProfiles BusFaultBackoff uses ZLG bus fault triggers")]
+    public void ZlgRecoveryProfiles_BusFaultBackoff_UsesExpectedPolicy()
+    {
+        var options = ZlgRecoveryProfiles.BusFaultBackoff;
+
+        Assert.AreEqual(CanRecoveryMode.ReopenWithBackoff, options.Mode);
+        Assert.AreEqual(
+            CanRecoveryTrigger.BusOff |
+            CanRecoveryTrigger.ErrorPassive |
+            CanRecoveryTrigger.NativeReceiveFault |
+            CanRecoveryTrigger.NativeTransmitFault,
+            options.Triggers);
+        Assert.AreEqual(TimeSpan.Zero, options.FaultDwellTime);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(500), options.RestartDelay);
+        Assert.AreEqual(3, options.MaxAttempts);
+        Assert.AreEqual(TimeSpan.FromSeconds(5), options.MaxBackoffDelay);
+        Assert.IsTrue(options.RejectTransmitsWhileRecovering);
+    }
+
+    [TestMethod(DisplayName = "ZlgRecoveryProfiles ConservativeBench waits longer before recovery")]
+    public void ZlgRecoveryProfiles_ConservativeBench_UsesExpectedPolicy()
+    {
+        var options = ZlgRecoveryProfiles.ConservativeBench;
+
+        Assert.AreEqual(CanRecoveryMode.ReopenWithBackoff, options.Mode);
+        Assert.AreEqual(
+            CanRecoveryTrigger.BusOff |
+            CanRecoveryTrigger.ErrorPassive |
+            CanRecoveryTrigger.NativeReceiveFault |
+            CanRecoveryTrigger.NativeTransmitFault,
+            options.Triggers);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(200), options.FaultDwellTime);
+        Assert.AreEqual(TimeSpan.FromSeconds(1), options.RestartDelay);
+        Assert.AreEqual(5, options.MaxAttempts);
+        Assert.AreEqual(TimeSpan.FromSeconds(10), options.MaxBackoffDelay);
+        Assert.IsTrue(options.RejectTransmitsWhileRecovering);
+    }
+
     [TestMethod(DisplayName = "ZLG registration extensions add adapter to registry and DI")]
     public void RegistrationExtensions_RegisterZlgAdapter()
     {

@@ -8,6 +8,26 @@ namespace CanHub.Adapter.Vector.Tests;
 [TestClass]
 public sealed class VectorRegistrationTests
 {
+    [TestMethod(DisplayName = "VectorEndpoint Create returns canonical endpoint")]
+    public void VectorEndpoint_Create_ReturnsCanonicalEndpoint()
+    {
+        var endpoint = VectorEndpoint.Create("VN1630", deviceIndex: 1, channelIndex: 0);
+
+        Assert.AreEqual("vector", endpoint.Scheme);
+        Assert.AreEqual("VN1630", endpoint.Device);
+        Assert.AreEqual(0, endpoint.ChannelIndex);
+        Assert.AreEqual("vector://VN1630?channelIndex=0&deviceIndex=1", endpoint.ToString());
+    }
+
+    [TestMethod(DisplayName = "VectorEndpoint rejects negative indexes")]
+    public void VectorEndpoint_NegativeIndex_ThrowsCanException()
+    {
+        var ex = Assert.ThrowsExactly<CanException>(
+            () => VectorEndpoint.Create("VN1630", deviceIndex: 0, channelIndex: -1));
+
+        Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+    }
+
     [TestMethod(DisplayName = "扩展方法可注册Vector适配器")]
     public void RegistrationExtensions_RegisterVectorAdapter()
     {

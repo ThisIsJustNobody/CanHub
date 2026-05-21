@@ -198,6 +198,18 @@ public sealed class CanHubRegistry
         => OpenAsync(endpoint, new CanOpenOptions(), ct);
 
     /// <summary>
+    /// 通过已解析端点异步打开 CAN 总线。<br/>
+    /// Asynchronously opens a CAN bus via an already parsed endpoint.
+    /// </summary>
+    /// <remarks>
+    /// 委托至 <see cref="OpenAsync(CanEndpoint, CanOpenOptions, CancellationToken)"/>，使用默认 <see cref="CanOpenOptions"/>。<br/>
+    /// Delegates to <see cref="OpenAsync(CanEndpoint, CanOpenOptions, CancellationToken)"/> with default <see cref="CanOpenOptions"/>.
+    /// </remarks>
+    public ValueTask<ICanBus> OpenAsync(
+        CanEndpoint endpoint, CancellationToken ct = default)
+        => OpenAsync(endpoint, new CanOpenOptions(), ct);
+
+    /// <summary>
     /// 通过扫描得到的通道信息异步打开 CAN 总线。<br/>
     /// Asynchronously opens a CAN bus via a scanned channel info.
     /// </summary>
@@ -263,11 +275,32 @@ public sealed class CanHubRegistry
         string endpoint, CanOpenOptions options, CancellationToken ct = default)
     {
         var parsed = CanEndpoint.Parse(endpoint);
-        var provider = FindAdapter(parsed.Scheme);
-        if (provider is null)
-            throw new CanException("*", CanErrorCategory.AdapterNotFound, $"找不到端点方案 '{parsed.Scheme}' 对应的适配器。");
+        return OpenAsync(parsed, options, ct);
+    }
 
-        var context = new CanOpenContext(parsed, options);
+    /// <summary>
+    /// 通过已解析端点和显式打开选项异步打开 CAN 总线。<br/>
+    /// Asynchronously opens a CAN bus via an already parsed endpoint and explicit open options.
+    /// </summary>
+    /// <remarks>
+    /// 按端点 scheme 查找对应的适配器提供者，然后委托打开。未找到适配器时抛出 <see cref="CanException"/>（<see cref="CanErrorCategory.AdapterNotFound"/>）。<br/>
+    /// Looks up the matching adapter provider by endpoint scheme, then delegates opening. Throws <see cref="CanException"/> (<see cref="CanErrorCategory.AdapterNotFound"/>) if no adapter matches.
+    /// </remarks>
+    /// <param name="endpoint">已解析端点。<br/>The parsed endpoint.</param>
+    /// <param name="options">打开选项（BusParameters 默认 Classic500k）。<br/>Open options (BusParameters defaults to Classic500k).</param>
+    /// <param name="ct">取消令牌。<br/>The cancellation token.</param>
+    /// <returns>打开的 CAN 总线句柄。<br/>The opened CAN bus handle.</returns>
+    public ValueTask<ICanBus> OpenAsync(
+        CanEndpoint endpoint, CanOpenOptions options, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var provider = FindAdapter(endpoint.Scheme);
+        if (provider is null)
+            throw new CanException("*", CanErrorCategory.AdapterNotFound, $"找不到端点方案 '{endpoint.Scheme}' 对应的适配器。");
+
+        var context = new CanOpenContext(endpoint, options);
         return provider.OpenAsync(context, ct);
     }
 

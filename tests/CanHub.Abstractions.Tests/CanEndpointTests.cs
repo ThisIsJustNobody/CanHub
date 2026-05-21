@@ -5,6 +5,84 @@ namespace CanHub.Abstractions.Tests;
 [TestClass]
 public class CanEndpointTests
 {
+    #region Factory
+
+    [TestMethod(DisplayName = "Create生成规范化端点并排序参数")]
+    public void Create_WithChannelAndParameters_ReturnsCanonicalEndpoint()
+    {
+        var ep = CanEndpoint.Create(
+            "ZLG",
+            "USBCANFD_200U",
+            channelIndex: 0,
+            new Dictionary<string, string>
+            {
+                ["deviceIndex"] = "0",
+                ["mode"] = "fd",
+            });
+
+        Assert.AreEqual("zlg", ep.Scheme);
+        Assert.AreEqual("USBCANFD_200U", ep.Device);
+        Assert.AreEqual(0, ep.ChannelIndex);
+        Assert.AreEqual("zlg://USBCANFD_200U?channelIndex=0&deviceIndex=0&mode=fd", ep.ToString());
+    }
+
+    [TestMethod(DisplayName = "Create对查询参数执行URI转义")]
+    public void Create_ParameterRequiresEscaping_EscapesQueryValue()
+    {
+        var ep = CanEndpoint.Create(
+            "virtual",
+            "bench",
+            parameters: new Dictionary<string, string>
+            {
+                ["label"] = "a b+c",
+            });
+
+        Assert.AreEqual("virtual://bench?label=a%20b%2Bc", ep.ToString());
+        Assert.AreEqual("a b+c", ep.Parameters["label"]);
+    }
+
+    [TestMethod(DisplayName = "Create拒绝负通道索引")]
+    public void Create_NegativeChannelIndex_ThrowsCanException()
+    {
+        var ex = TestAssert.Throws<CanException>(
+            () => CanEndpoint.Create("virtual", "bench", channelIndex: -1));
+
+        Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+    }
+
+    [TestMethod(DisplayName = "Create拒绝保留的通道参数")]
+    public void Create_ReservedChannelParameter_ThrowsCanException()
+    {
+        var ex = TestAssert.Throws<CanException>(
+            () => CanEndpoint.Create(
+                "virtual",
+                "bench",
+                parameters: new Dictionary<string, string>
+                {
+                    ["channelIndex"] = "0",
+                }));
+
+        Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+    }
+
+    [TestMethod(DisplayName = "Create拒绝大小写不同的重复参数")]
+    public void Create_DuplicateParameterIgnoringCase_ThrowsCanException()
+    {
+        var ex = TestAssert.Throws<CanException>(
+            () => CanEndpoint.Create(
+                "virtual",
+                "bench",
+                parameters: new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["alpha"] = "1",
+                    ["ALPHA"] = "2",
+                }));
+
+        Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
+    }
+
+    #endregion
+
     #region Basic Parsing
 
     [TestMethod(DisplayName = "解析虚拟端点正确提取各字段")]
