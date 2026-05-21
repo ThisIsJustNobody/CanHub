@@ -87,14 +87,11 @@ await using var bus = await registry.OpenAsync(
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,
-        Recovery = CanRecoveryOptions.ReopenWithBackoff(
-            triggers: CanRecoveryTrigger.BusOff |
-                      CanRecoveryTrigger.ErrorPassive |
-                      CanRecoveryTrigger.NativeReceiveFault)
+        Recovery = ZlgRecoveryProfiles.BusFaultBackoff
     });
 ```
 
-`ResetOnFault` 只尝试一次关闭/重开；`ReopenWithBackoff` 会按配置的次数和退避策略重试。ZLG 的 ACK 错误、位错误等通用总线错误对象可通过 `CanRecoveryTrigger.NativeReceiveFault` 触发恢复。
+`ZlgRecoveryProfiles.Disabled` 是默认的不重开策略。`ZlgRecoveryProfiles.BusFaultBackoff` 覆盖常见 ZLG 总线、原生接收和原生发送故障，初始等待 500ms，最多尝试 3 次。`ZlgRecoveryProfiles.ConservativeBench` 等待更久、尝试次数更多，适合台架环境。需要自定义触发条件或延迟时，仍可直接使用 `CanRecoveryOptions.ResetOnFault` 或 `CanRecoveryOptions.ReopenWithBackoff`。
 
 实测 `USBCANFD_200U` 在错误注入或快速关闭/重开后，`ZCAN_ResetCAN`/`ZCAN_CloseDevice` 返回后驱动内部状态仍可能短暂残留；直接运行测试可能遇到 `ZCAN_StartCAN Error(0)`，而调试模式或加入等待后不复现。因此 ZLG 适配器在自动恢复重开前保留 500ms 的原生关闭稳定窗口：调用方配置的 `RestartDelay` 大于 500ms 时按调用方配置执行，小于 500ms（包括 `TimeSpan.Zero`）时按 500ms 执行。同时，`ZCAN_StartCAN` 若返回 `Error(0)`，适配器会先 `ZCAN_ResetCAN`，再等待 500ms 后重试启动，最多 6 次；该重试覆盖初次打开和恢复重开。
 

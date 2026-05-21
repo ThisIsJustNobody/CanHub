@@ -35,6 +35,50 @@ public sealed class ZlgRegistrationTests
         Assert.AreEqual(CanErrorCategory.InvalidEndpoint, ex.Category);
     }
 
+    [TestMethod(DisplayName = "ZlgRecoveryProfiles Disabled returns shared disabled policy")]
+    public void ZlgRecoveryProfiles_Disabled_ReturnsSharedPolicy()
+    {
+        Assert.AreSame(CanRecoveryOptions.Disabled, ZlgRecoveryProfiles.Disabled);
+    }
+
+    [TestMethod(DisplayName = "ZlgRecoveryProfiles BusFaultBackoff uses ZLG bus fault triggers")]
+    public void ZlgRecoveryProfiles_BusFaultBackoff_UsesExpectedPolicy()
+    {
+        var options = ZlgRecoveryProfiles.BusFaultBackoff;
+
+        Assert.AreEqual(CanRecoveryMode.ReopenWithBackoff, options.Mode);
+        Assert.AreEqual(
+            CanRecoveryTrigger.BusOff |
+            CanRecoveryTrigger.ErrorPassive |
+            CanRecoveryTrigger.NativeReceiveFault |
+            CanRecoveryTrigger.NativeTransmitFault,
+            options.Triggers);
+        Assert.AreEqual(TimeSpan.Zero, options.FaultDwellTime);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(500), options.RestartDelay);
+        Assert.AreEqual(3, options.MaxAttempts);
+        Assert.AreEqual(TimeSpan.FromSeconds(5), options.MaxBackoffDelay);
+        Assert.IsTrue(options.RejectTransmitsWhileRecovering);
+    }
+
+    [TestMethod(DisplayName = "ZlgRecoveryProfiles ConservativeBench waits longer before recovery")]
+    public void ZlgRecoveryProfiles_ConservativeBench_UsesExpectedPolicy()
+    {
+        var options = ZlgRecoveryProfiles.ConservativeBench;
+
+        Assert.AreEqual(CanRecoveryMode.ReopenWithBackoff, options.Mode);
+        Assert.AreEqual(
+            CanRecoveryTrigger.BusOff |
+            CanRecoveryTrigger.ErrorPassive |
+            CanRecoveryTrigger.NativeReceiveFault |
+            CanRecoveryTrigger.NativeTransmitFault,
+            options.Triggers);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(200), options.FaultDwellTime);
+        Assert.AreEqual(TimeSpan.FromSeconds(1), options.RestartDelay);
+        Assert.AreEqual(5, options.MaxAttempts);
+        Assert.AreEqual(TimeSpan.FromSeconds(10), options.MaxBackoffDelay);
+        Assert.IsTrue(options.RejectTransmitsWhileRecovering);
+    }
+
     [TestMethod(DisplayName = "ZLG registration extensions add adapter to registry and DI")]
     public void RegistrationExtensions_RegisterZlgAdapter()
     {

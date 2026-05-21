@@ -87,14 +87,11 @@ await using var bus = await registry.OpenAsync(
     new CanOpenOptions
     {
         BusParameters = CanBusParameters.Classic500k,
-        Recovery = CanRecoveryOptions.ReopenWithBackoff(
-            triggers: CanRecoveryTrigger.BusOff |
-                      CanRecoveryTrigger.ErrorPassive |
-                      CanRecoveryTrigger.NativeReceiveFault)
+        Recovery = ZlgRecoveryProfiles.BusFaultBackoff
     });
 ```
 
-`ResetOnFault` performs one close/reopen attempt. `ReopenWithBackoff` retries up to the configured attempt limit. Generic ZLG bus error objects, such as ACK and bit errors, can be recovered by enabling `CanRecoveryTrigger.NativeReceiveFault`.
+`ZlgRecoveryProfiles.Disabled` is the default no-reopen policy. `ZlgRecoveryProfiles.BusFaultBackoff` covers common ZLG bus/native receive/transmit faults with a 500ms initial delay and three attempts. `ZlgRecoveryProfiles.ConservativeBench` waits longer and allows more attempts for bench setups. You can still use `CanRecoveryOptions.ResetOnFault` or `CanRecoveryOptions.ReopenWithBackoff` directly when you need custom triggers or delays.
 
 Observed on `USBCANFD_200U`: after error injection or fast close/reopen cycles, the native driver can keep transient state briefly after `ZCAN_ResetCAN`/`ZCAN_CloseDevice` has returned. Direct test runs may hit `ZCAN_StartCAN Error (0)`, while debugger-paced runs or added delay avoid it. The ZLG adapter therefore keeps a 500ms native-close settle window before automatic recovery reopen: caller-provided `RestartDelay` values above 500ms are honored, while smaller values, including `TimeSpan.Zero`, are raised to 500ms. If `ZCAN_StartCAN` returns `Error (0)`, the adapter resets the channel, waits 500ms, and retries the start up to six attempts; this covers both initial open and recovery reopen.
 
