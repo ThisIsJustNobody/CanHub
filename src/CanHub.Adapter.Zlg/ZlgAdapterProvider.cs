@@ -10,7 +10,6 @@ namespace CanHub.Adapter.Zlg;
 /// </summary>
 public sealed class ZlgAdapterProvider : ICanAdapterProvider
 {
-    private const int DefaultScanDepth = 2;
     private static readonly ConcurrentDictionary<ZlgDeviceKey, ZlgDeviceLeaseEntry> s_devices = new();
     private static readonly ConcurrentDictionary<ZlgChannelKey, ZlgChannelLeaseEntry> s_channels = new();
     private static readonly SemaphoreSlim s_gate = new(1, 1);
@@ -146,19 +145,24 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
             return ValueTask.FromResult(new CanChannelScanResult(channels, diagnostics));
         }
 
-        var startIndex = options?.StartIndex ?? 0;
-        var minDepth = Math.Max(options?.MinDepth ?? 0, DefaultScanDepth);
+        var scanPlan = ScanIndexPlan.FromOptions(options);
 
         try
         {
             foreach (var capabilities in ZlgDeviceTypeMap.GetScannableDeviceTypes())
             {
-                for (var deviceIndex = startIndex; deviceIndex < startIndex + minDepth; deviceIndex++)
+                for (int deviceIndex = scanPlan.StartIndex, scannedCount = 0; ; deviceIndex++)
                 {
                     ct.ThrowIfCancellationRequested();
 
                     if (!ZlgNative.TryOpenDevice((ZlgDeviceType)capabilities.DeviceTypeId, (uint)deviceIndex, out var handle))
+                    {
+                        scannedCount++;
+                        if (!scanPlan.ShouldContinueAfter(scannedCount, foundAtCurrentIndex: false))
+                            break;
+
                         continue;
+                    }
 
                     try
                     {
@@ -192,6 +196,10 @@ public sealed class ZlgAdapterProvider : ICanAdapterProvider
                                 adapterId: "zlg"));
                         }
                     }
+
+                    scannedCount++;
+                    if (!scanPlan.ShouldContinueAfter(scannedCount, foundAtCurrentIndex: true))
+                        break;
                 }
             }
         }
