@@ -17,6 +17,8 @@ internal sealed class VectorChannelPort : IChannelLease
     private int _notificationHandle = -1;
     private int _referenceCount;
     private int _disposed;
+    private readonly object _openDiagnosticsGate = new();
+    private List<CanStatusEvent> _openDiagnostics = [];
 
     /// <summary>逻辑通道索引，由端点解析产生。</summary>
     public int LogicalChannelIndex { get; }
@@ -126,25 +128,48 @@ internal sealed class VectorChannelPort : IChannelLease
         return ValueTask.CompletedTask;
     }
 
+    internal CanStatusEvent[] ConsumeOpenDiagnostics()
+    {
+        lock (_openDiagnosticsGate)
+        {
+            if (_openDiagnostics.Count == 0)
+                return [];
+
+            var diagnostics = _openDiagnostics.ToArray();
+            _openDiagnostics.Clear();
+            return diagnostics;
+        }
+    }
+
     private void OpenActivePort(CanOpenContext context, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var busParams = context.Options.BusParameters;
-        OpenPort(busParams.IsFd, context.Options.NativeOptions);
-        ConfigureBusParameters(busParams, context.Options.NativeOptions);
-        IsFd = busParams.IsFd;
-        ct.ThrowIfCancellationRequested();
-        SetNotification();
-        ActivateChannel();
+        var vectorOptions = context.Options.NativeOptions as VectorOpenOptions ?? new VectorOpenOptions();
+        var diagnostics = new List<CanStatusEvent>();
+        try
+        {
+            OpenPort(busParams.IsFd, vectorOptions);
+            ConfigureBusParameters(busParams, vectorOptions, diagnostics);
+            IsFd = busParams.IsFd;
+            ct.ThrowIfCancellationRequested();
+            SetNotification();
+            ActivateChannel();
+            StoreOpenDiagnostics(diagnostics);
+        }
+        catch
+        {
+            StoreOpenDiagnostics([]);
+            throw;
+        }
     }
 
-    private void OpenPort(bool isFd, object? nativeOptions)
+    private void OpenPort(bool isFd, VectorOpenOptions vectorOptions)
     {
-        var vectorOptions = nativeOptions as VectorOpenOptions;
-        var applicationName = string.IsNullOrWhiteSpace(vectorOptions?.ApplicationName)
+        var applicationName = string.IsNullOrWhiteSpace(vectorOptions.ApplicationName)
             ? "CanHub"
             : vectorOptions.ApplicationName;
-        var rxQueueSize = vectorOptions?.RxQueueSize > 0
+        var rxQueueSize = vectorOptions.RxQueueSize > 0
             ? (uint)vectorOptions.RxQueueSize
             : isFd ? 65536u : 256u;
 
@@ -153,48 +178,45 @@ internal sealed class VectorChannelPort : IChannelLease
         var interfaceVersion = isFd
             ? XLDefine.XL_InterfaceVersion.XL_INTERFACE_VERSION_V4
             : XLDefine.XL_InterfaceVersion.XL_INTERFACE_VERSION;
-        var status = VectorDriver.Driver.XL_OpenPort(
+        var status = VectorDriver.NativeApi.OpenPort(
             ref _portHandle, applicationName, _accessMask, ref _permissionMask,
             rxQueueSize, interfaceVersion,
             XLDefine.XL_BusTypes.XL_BUS_TYPE_CAN);
         if (status != XLDefine.XL_Status.XL_SUCCESS)
         {
-            var errorStr = VectorDriver.Driver.XL_GetErrorString(status);
+            var errorStr = VectorDriver.NativeApi.GetErrorString(status);
             throw new CanException("vector", CanErrorCategory.AdapterError,
                 nativeFunction: $"XL_OpenPort(mask=0x{_accessMask:X},error={errorStr})", vendorCode: (int)status);
         }
     }
 
-    private void ConfigureBusParameters(CanBusParameters busParams, object? nativeOptions)
+    private void ConfigureBusParameters(
+        CanBusParameters busParams,
+        VectorOpenOptions vectorOptions,
+        List<CanStatusEvent> diagnostics)
     {
-        var vectorOptions = nativeOptions as VectorOpenOptions;
-        var ignoreForeignConfiguration = vectorOptions?.IgnoreForeignConfiguration == true;
         ValidateSupportedBitrates(busParams);
 
         // 1) 时序参数
         if (busParams.IsFd)
         {
             var fdConf = CreateCanFdConfiguration(busParams);
-            var status = VectorDriver.Driver.XL_CanFdSetConfiguration(
-                _portHandle, _accessMask, fdConf);
-            if (status != XLDefine.XL_Status.XL_SUCCESS &&
-                !(ignoreForeignConfiguration && status == XLDefine.XL_Status.XL_ERR_INVALID_ACCESS))
-            {
-                throw new CanException("vector", CanErrorCategory.AdapterError,
-                    nativeFunction: "XL_CanFdSetConfiguration", vendorCode: (int)status);
-            }
+            HandleInitAccessConfigurationStatus(
+                "XL_CanFdSetConfiguration",
+                vectorOptions,
+                diagnostics,
+                () => VectorDriver.NativeApi.CanFdSetConfiguration(
+                    _portHandle, _permissionMask, fdConf));
         }
         else
         {
             var chipParams = CreateClassicChipParams(busParams, vectorOptions);
-            var status = VectorDriver.Driver.XL_CanSetChannelParams(
-                _portHandle, _accessMask, chipParams);
-            if (status != XLDefine.XL_Status.XL_SUCCESS &&
-                !(ignoreForeignConfiguration && status == XLDefine.XL_Status.XL_ERR_INVALID_ACCESS))
-            {
-                throw new CanException("vector", CanErrorCategory.AdapterError,
-                    nativeFunction: "XL_CanSetChannelParams", vendorCode: (int)status);
-            }
+            HandleInitAccessConfigurationStatus(
+                "XL_CanSetChannelParams",
+                vectorOptions,
+                diagnostics,
+                () => VectorDriver.NativeApi.CanSetChannelParams(
+                    _portHandle, _permissionMask, chipParams));
         }
 
         // 2) SetChannelOutput —— 输出模式（正常 / 静默）
@@ -203,39 +225,34 @@ internal sealed class VectorChannelPort : IChannelLease
             var outputMode = busParams.AckOff.Value
                 ? XLDefine.XL_OutputMode.XL_OUTPUT_MODE_SILENT
                 : XLDefine.XL_OutputMode.XL_OUTPUT_MODE_NORMAL;
-            var outputStatus = VectorDriver.Driver.XL_CanSetChannelOutput(
-                _portHandle, _permissionMask, outputMode);
-            if (outputStatus != XLDefine.XL_Status.XL_SUCCESS)
-            {
-                throw new CanException("vector", CanErrorCategory.AdapterError,
-                    nativeFunction: "XL_CanSetChannelOutput", vendorCode: (int)outputStatus);
-            }
+            HandleInitAccessConfigurationStatus(
+                "XL_CanSetChannelOutput",
+                vectorOptions,
+                diagnostics,
+                () => VectorDriver.NativeApi.CanSetChannelOutput(
+                    _portHandle, _permissionMask, outputMode));
         }
 
         // 3) Vector 专有选项：SetChannelMode + SetReceiveMode
-        TransmitEchoEnabled = false;
-        if (vectorOptions is not null)
-        {
-            var channelModeStatus = VectorDriver.Driver.XL_CanSetChannelMode(
-                _portHandle, _accessMask, tx: vectorOptions.TransmitEcho ? 1u : 0u,
-                txRq: vectorOptions.ReadyToSendEvent ? 1u : 0u);
-            if (channelModeStatus != XLDefine.XL_Status.XL_SUCCESS)
-            {
-                throw new CanException("vector", CanErrorCategory.AdapterError,
-                    nativeFunction: "XL_CanSetChannelMode", vendorCode: (int)channelModeStatus);
-            }
+        var channelModeStatus = VectorDriver.NativeApi.CanSetChannelMode(
+            _portHandle, _accessMask, tx: vectorOptions.TransmitEcho ? 1u : 0u,
+            txRq: vectorOptions.ReadyToSendEvent ? 1u : 0u);
+        HandleConfigurationStatus(
+            channelModeStatus,
+            "XL_CanSetChannelMode",
+            vectorOptions,
+            diagnostics);
 
-            var receiveModeStatus = VectorDriver.Driver.XL_CanSetReceiveMode(
-                _portHandle, errorFrame: vectorOptions.SuppressErrorFrames ? (byte)1 : (byte)0,
-                chipState: vectorOptions.SuppressChipState ? (byte)1 : (byte)0);
-            if (receiveModeStatus != XLDefine.XL_Status.XL_SUCCESS)
-            {
-                throw new CanException("vector", CanErrorCategory.AdapterError,
-                    nativeFunction: "XL_CanSetReceiveMode", vendorCode: (int)receiveModeStatus);
-            }
+        var receiveModeStatus = VectorDriver.NativeApi.CanSetReceiveMode(
+            _portHandle, errorFrame: vectorOptions.SuppressErrorFrames ? (byte)1 : (byte)0,
+            chipState: vectorOptions.SuppressChipState ? (byte)1 : (byte)0);
+        HandleConfigurationStatus(
+            receiveModeStatus,
+            "XL_CanSetReceiveMode",
+            vectorOptions,
+            diagnostics);
 
-            TransmitEchoEnabled = vectorOptions.TransmitEcho;
-        }
+        TransmitEchoEnabled = vectorOptions.TransmitEcho;
     }
 
     internal static XLClass.XLcanFdConf CreateCanFdConfiguration(CanBusParameters busParams)
@@ -317,12 +334,12 @@ internal sealed class VectorChannelPort : IChannelLease
 
     private void ActivateChannel()
     {
-        var status = VectorDriver.Driver.XL_ActivateChannel(
+        var status = VectorDriver.NativeApi.ActivateChannel(
             _portHandle, _accessMask, XLDefine.XL_BusTypes.XL_BUS_TYPE_CAN,
             XLDefine.XL_AC_Flags.XL_ACTIVATE_NONE);
         if (status != XLDefine.XL_Status.XL_SUCCESS)
         {
-            var errorStr = VectorDriver.Driver.XL_GetErrorString(status);
+            var errorStr = VectorDriver.NativeApi.GetErrorString(status);
             throw new CanException("vector", CanErrorCategory.AdapterError,
                 nativeFunction: $"XL_ActivateChannel(mask=0x{_accessMask:X},error={errorStr})", vendorCode: (int)status);
         }
@@ -331,7 +348,7 @@ internal sealed class VectorChannelPort : IChannelLease
     private void SetNotification()
     {
         int handle = -1;
-        var status = VectorDriver.Driver.XL_SetNotification(_portHandle, ref handle, 1);
+        var status = VectorDriver.NativeApi.SetNotification(_portHandle, ref handle, 1);
         if (status != XLDefine.XL_Status.XL_SUCCESS)
             throw new CanException("vector", CanErrorCategory.AdapterError,
                 nativeFunction: "XL_SetNotification", vendorCode: (int)status);
@@ -341,7 +358,7 @@ internal sealed class VectorChannelPort : IChannelLease
     private void DeactivateChannel(Action<CanStatusEvent>? publishStatus)
     {
         if (!IsOpen) return;
-        var status = VectorDriver.Driver.XL_DeactivateChannel(_portHandle, _accessMask);
+        var status = VectorDriver.NativeApi.DeactivateChannel(_portHandle, _accessMask);
         if (status != XLDefine.XL_Status.XL_SUCCESS)
             publishStatus?.Invoke(CreateCloseStatus("XL_DeactivateChannel", status));
     }
@@ -349,7 +366,7 @@ internal sealed class VectorChannelPort : IChannelLease
     private void ClosePort(Action<CanStatusEvent>? publishStatus)
     {
         if (!IsOpen) return;
-        var status = VectorDriver.Driver.XL_ClosePort(_portHandle);
+        var status = VectorDriver.NativeApi.ClosePort(_portHandle);
         if (status != XLDefine.XL_Status.XL_SUCCESS)
             publishStatus?.Invoke(CreateCloseStatus("XL_ClosePort", status));
         _portHandle = -1;
@@ -357,16 +374,16 @@ internal sealed class VectorChannelPort : IChannelLease
     }
 
     internal XLDefine.XL_Status ReceiveClassic(ref XLClass.xl_event ev)
-        => VectorDriver.Driver.XL_Receive(_portHandle, ref ev);
+        => VectorDriver.NativeApi.ReceiveClassic(_portHandle, ref ev);
 
     internal XLDefine.XL_Status CanReceive(ref XLClass.XLcanRxEvent rx)
-        => VectorDriver.Driver.XL_CanReceive(_portHandle, ref rx);
+        => VectorDriver.NativeApi.CanReceive(_portHandle, ref rx);
 
     internal XLDefine.XL_Status CanTransmit(XLClass.xl_event ev)
-        => VectorDriver.Driver.XL_CanTransmit(_portHandle, _accessMask, ev);
+        => VectorDriver.NativeApi.CanTransmit(_portHandle, _accessMask, ev);
 
     internal XLDefine.XL_Status CanTransmitEx(ref uint sent, XLClass.XLcanTxEvent tx)
-        => VectorDriver.Driver.XL_CanTransmitEx(_portHandle, _accessMask, ref sent, tx);
+        => VectorDriver.NativeApi.CanTransmitEx(_portHandle, _accessMask, ref sent, tx);
 
     public void Dispose(Action<CanStatusEvent>? publishStatus = null)
     {
@@ -404,5 +421,70 @@ internal sealed class VectorChannelPort : IChannelLease
             CanStatusSeverity.Warning,
             channelIndex: LogicalChannelIndex,
             nativeStatusCode: (uint)status,
-            message: $"Vector close operation failed: {nativeFunction} returned {status} ({VectorDriver.Driver.XL_GetErrorString(status)}).");
+            message: $"Vector close operation failed: {nativeFunction} returned {status} ({VectorDriver.NativeApi.GetErrorString(status)}).");
+
+    private void HandleConfigurationStatus(
+        XLDefine.XL_Status status,
+        string nativeFunction,
+        VectorOpenOptions vectorOptions,
+        List<CanStatusEvent> diagnostics)
+    {
+        if (status == XLDefine.XL_Status.XL_SUCCESS)
+            return;
+
+        if (status == XLDefine.XL_Status.XL_ERR_INVALID_ACCESS &&
+            vectorOptions.IgnoreForeignConfiguration)
+        {
+            diagnostics.Add(CreateForeignConfigurationIgnoredStatus(nativeFunction, status));
+            return;
+        }
+
+        if (status == XLDefine.XL_Status.XL_ERR_INVALID_ACCESS)
+        {
+            throw new CanException(
+                "vector",
+                CanErrorCategory.ConfigurationConflict,
+                $"Vector configuration call {nativeFunction} returned {status}. The channel may already be configured and activated by another process.",
+                nativeFunction: nativeFunction,
+                vendorCode: (int)status,
+                hint: "Set VectorOpenOptions.IgnoreForeignConfiguration = true to attach to an externally configured Vector channel, and verify that the external bus parameters match the requested CanBusParameters.");
+        }
+
+        throw new CanException("vector", CanErrorCategory.AdapterError,
+            nativeFunction: nativeFunction, vendorCode: (int)status);
+    }
+
+    private void HandleInitAccessConfigurationStatus(
+        string nativeFunction,
+        VectorOpenOptions vectorOptions,
+        List<CanStatusEvent> diagnostics,
+        Func<XLDefine.XL_Status> configure)
+    {
+        var status = HasInitAccess
+            ? configure()
+            : XLDefine.XL_Status.XL_ERR_INVALID_ACCESS;
+        HandleConfigurationStatus(status, nativeFunction, vectorOptions, diagnostics);
+    }
+
+    private bool HasInitAccess => (_permissionMask & _accessMask) != 0;
+
+    private CanStatusEvent CreateForeignConfigurationIgnoredStatus(
+        string nativeFunction,
+        XLDefine.XL_Status status) =>
+        CanStatusEvent.Create(
+            CanStatusKind.Channel,
+            CanStatusCode.ConfigurationIgnored,
+            CanStatusSeverity.Warning,
+            channelIndex: LogicalChannelIndex,
+            nativeStatusCode: (uint)status,
+            message:
+                $"Vector configuration call {nativeFunction} returned {status}; channel {LogicalChannelIndex} is treated as externally configured because IgnoreForeignConfiguration is enabled, and activation will continue. Verify that the external bus parameters match the requested CanBusParameters.");
+
+    private void StoreOpenDiagnostics(List<CanStatusEvent> diagnostics)
+    {
+        lock (_openDiagnosticsGate)
+        {
+            _openDiagnostics = diagnostics;
+        }
+    }
 }

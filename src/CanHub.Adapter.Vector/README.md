@@ -71,6 +71,8 @@ await using var bus = await registry.OpenAsync(
 
 Use `CanOpenOptions.BusParameters` for CAN FD when the target channel and hardware support CAN FD, for example `CanBusParameters.Fd500k2M`. Incompatible shared-channel settings are rejected through adapter-owned lease checks.
 
+Vector channels may already be configured and activated by another process. By default, `VectorOpenOptions.IgnoreForeignConfiguration` is `true`; if the XL Driver rejects a configuration call with `XL_ERR_INVALID_ACCESS`, the adapter reports a `ConfigurationIgnored` warning through `StatusChanged` and continues to activate the channel for transmit/receive. Set `IgnoreForeignConfiguration = false` when the current process must prove that it applied the requested parameters itself. CanHub does not verify the external process' actual bit timing, so callers should confirm it matches the requested `CanBusParameters`.
+
 ## Recovery
 
 Vector recovery is opt-in through `CanOpenOptions.Recovery`. The default is `CanRecoveryOptions.Disabled`, which reports bus/native errors without closing or reopening the channel.
