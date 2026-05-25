@@ -57,13 +57,13 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
             var deviceType = VectorDeviceTypeMapper.Resolve(context.Endpoint.Device);
             var deviceIndex = GetParameterInt(context.Endpoint, "deviceIndex", 0);
             var channelIndex = context.Endpoint.ChannelIndex ?? 0;
-            ValidateNativeOptions(context.Options.NativeOptions);
+            var effectiveContext = CreateEffectiveContext(context);
             var key = new VectorChannelKey(deviceType, deviceIndex, channelIndex);
             var canonicalLocator = $"vector://{deviceType}?deviceIndex={deviceIndex}&channelIndex={channelIndex}";
             var fingerprintOptions = new CanOpenOptions
             {
-                BusParameters = context.Options.BusParameters,
-                NativeOptions = context.Options.NativeOptions,
+                BusParameters = effectiveContext.Options.BusParameters,
+                NativeOptions = effectiveContext.Options.NativeOptions,
             };
             var fingerprint = LeaseConflictDetector.ComputeFingerprint(
                 context.Endpoint,
@@ -100,7 +100,7 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
                     var isFd = context.Options.BusParameters.IsFd;
                     var displayName = $"Vector {context.Endpoint.Device} Channel {channelIndex}";
                     var entry = await CreateChannelEntryAsync(
-                        key, driver, fingerprint, isFd, displayName, context, ct);
+                        key, driver, fingerprint, isFd, displayName, effectiveContext, ct);
 
                     s_channels[key] = entry;
                     return new VectorBus(entry, ReleaseChannel, ReleaseChannelAsync);
@@ -190,6 +190,8 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
                 openSpec,
                 context.Options.Recovery,
                 VectorNativeChannelLifecycle.Instance);
+            foreach (var diagnostic in port.ConsumeOpenDiagnostics())
+                entry.PublishStatus(diagnostic);
             CheckUnsupportedBusParameters(context.Options.BusParameters, entry.PublishStatus, port.LogicalChannelIndex);
             entry.StartReceiveLoop();
 
@@ -276,10 +278,29 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
         return result;
     }
 
-    private static void ValidateNativeOptions(object? nativeOptions)
+    private static CanOpenContext CreateEffectiveContext(CanOpenContext context)
     {
-        if (nativeOptions is null or VectorOpenOptions)
-            return;
+        var vectorOptions = ResolveNativeOptions(context.Options.NativeOptions);
+        if (ReferenceEquals(context.Options.NativeOptions, vectorOptions))
+            return context;
+
+        return new CanOpenContext(
+            context.Endpoint,
+            new CanOpenOptions
+            {
+                BusParameters = context.Options.BusParameters,
+                NativeOptions = vectorOptions,
+                Recovery = context.Options.Recovery,
+            });
+    }
+
+    private static VectorOpenOptions ResolveNativeOptions(object? nativeOptions)
+    {
+        if (nativeOptions is null)
+            return new VectorOpenOptions();
+
+        if (nativeOptions is VectorOpenOptions vectorOptions)
+            return vectorOptions;
 
         throw new CanException("vector", CanErrorCategory.ConfigurationConflict,
             $"Vector adapter NativeOptions must be {nameof(VectorOpenOptions)} when specified.");
@@ -352,7 +373,7 @@ public sealed class VectorAdapterProvider : ICanAdapterProvider
     private static ulong ResolveChannelMask(
         XLDefine.XL_HardwareType deviceType, int deviceIndex, int channelIndex)
     {
-        var mask = VectorDriver.Driver.XL_GetChannelMask(deviceType, deviceIndex, channelIndex);
+        var mask = VectorDriver.NativeApi.GetChannelMask(deviceType, deviceIndex, channelIndex);
         if (mask != 0)
             return mask;
 

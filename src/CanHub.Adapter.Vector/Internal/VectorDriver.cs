@@ -14,6 +14,7 @@ internal sealed class VectorDriver : IAsyncDisposable
     private static Func<XLDefine.XL_Status> s_openDriver = s_driver.XL_OpenDriver;
     private static Func<XLDefine.XL_Status> s_closeDriver = s_driver.XL_CloseDriver;
     private static Func<XLDefine.XL_Status, string> s_getErrorString = s_driver.XL_GetErrorString;
+    private static IVectorNativeApi s_nativeApi = new VectorNativeApi();
     private static int s_referenceCount;
     private static bool s_isOpen;
 
@@ -27,6 +28,15 @@ internal sealed class VectorDriver : IAsyncDisposable
         {
             VectorNativeLoader.EnsureRegistered();
             return s_driver;
+        }
+    }
+
+    internal static IVectorNativeApi NativeApi
+    {
+        get
+        {
+            VectorNativeLoader.EnsureRegistered();
+            return s_nativeApi;
         }
     }
 
@@ -51,6 +61,21 @@ internal sealed class VectorDriver : IAsyncDisposable
             s_getErrorString = getErrorString ?? s_driver.XL_GetErrorString;
 
             return new LifecycleHookScope(previousOpenDriver, previousCloseDriver, previousGetErrorString);
+        }
+    }
+
+    internal static IDisposable UseNativeApiForTesting(IVectorNativeApi nativeApi)
+    {
+        ArgumentNullException.ThrowIfNull(nativeApi);
+
+        lock (s_gate)
+        {
+            if (s_referenceCount != 0 || s_isOpen)
+                throw new InvalidOperationException("Vector native API test hooks require an idle driver.");
+
+            var previous = s_nativeApi;
+            s_nativeApi = nativeApi;
+            return new NativeApiHookScope(previous);
         }
     }
 
@@ -163,6 +188,23 @@ internal sealed class VectorDriver : IAsyncDisposable
                 s_openDriver = previousOpenDriver;
                 s_closeDriver = previousCloseDriver;
                 s_getErrorString = previousGetErrorString;
+                _disposed = true;
+            }
+        }
+    }
+
+    private sealed class NativeApiHookScope(IVectorNativeApi previous) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            lock (s_gate)
+            {
+                if (_disposed)
+                    return;
+
+                s_nativeApi = previous;
                 _disposed = true;
             }
         }

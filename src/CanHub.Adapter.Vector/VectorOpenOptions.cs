@@ -22,9 +22,12 @@ public sealed class VectorOpenOptions : ICanNativeOptionsFingerprint
 
     /// <summary>
     /// 是否忽略外部应用的通道配置（Vector 特有 escape hatch）。<br/>
+    /// 默认开启；配置调用因外部已激活通道返回 XL_ERR_INVALID_ACCESS 时会继续激活并上报警告。<br/>
     /// Whether to ignore channel configuration from other applications (Vector-specific escape hatch).
+    /// Enabled by default; configuration calls returning XL_ERR_INVALID_ACCESS because another
+    /// application already activated the channel are reported as warnings and activation continues.
     /// </summary>
-    public bool IgnoreForeignConfiguration { get; set; } = false;
+    public bool IgnoreForeignConfiguration { get; set; } = true;
 
     /// <summary>
     /// 发送成功后回显确认帧（TX echo）。

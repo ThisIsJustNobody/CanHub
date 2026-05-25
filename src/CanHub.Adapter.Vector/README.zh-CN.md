@@ -71,6 +71,8 @@ await using var bus = await registry.OpenAsync(
 
 目标通道和硬件支持 CAN FD 时，可通过 `CanOpenOptions.BusParameters` 配置 CAN FD 参数，例如 `CanBusParameters.Fd500k2M`。不兼容的共享通道设置会由适配器自己的租约检查拒绝。
 
+Vector 通道可能已经被其他进程配置并激活。`VectorOpenOptions.IgnoreForeignConfiguration` 默认值为 `true`；当 XL Driver 对配置调用返回 `XL_ERR_INVALID_ACCESS` 时，适配器会通过 `StatusChanged` 上报 `ConfigurationIgnored` 警告，并继续激活通道用于收发。若当前进程必须确认参数由自己成功应用，请显式设置 `IgnoreForeignConfiguration = false`。CanHub 不会校验外部进程实际使用的位时序，调用方需要确认它与请求的 `CanBusParameters` 一致。
+
 ## 自动恢复
 
 Vector 自动恢复通过 `CanOpenOptions.Recovery` 显式开启。默认值是 `CanRecoveryOptions.Disabled`，即只上报总线/原生错误，不主动关闭或重开通道。

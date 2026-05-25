@@ -407,6 +407,8 @@ internal sealed class VectorChannelLeaseEntry : IAsyncDisposable
     private async ValueTask OpenPortAfterRecoveryAsync(bool restartReceiveLoop)
     {
         await _lifecycle.OpenPortAsync(Port, _openSpec).ConfigureAwait(false);
+        foreach (var diagnostic in Port.ConsumeOpenDiagnostics())
+            PublishStatus(diagnostic);
         if (restartReceiveLoop)
             StartReceiveLoop();
     }
